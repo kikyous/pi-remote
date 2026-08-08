@@ -24,14 +24,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,16 +48,8 @@ fun ProjectListScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by repo.browse.collectAsStateWithLifecycle()
-    val pullState = rememberPullToRefreshState()
 
     LaunchedEffect(Unit) { if (state.projects.isEmpty()) repo.refreshProjects() }
-
-    if (pullState.isRefreshing) {
-        LaunchedEffect(Unit) { repo.refreshProjects() }
-    }
-    LaunchedEffect(state.loadingProjects) {
-        if (!state.loadingProjects) pullState.endRefresh()
-    }
 
     Scaffold(
         modifier = modifier,
@@ -74,7 +64,11 @@ fun ProjectListScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize().nestedScroll(pullState.nestedScrollConnection)) {
+        PullToRefreshBox(
+            isRefreshing = state.loadingProjects,
+            onRefresh = { repo.refreshProjects() },
+            modifier = Modifier.padding(padding).fillMaxSize(),
+        ) {
             if (state.projects.isEmpty() && state.loadingProjects) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else if (state.projects.isEmpty()) {
@@ -106,7 +100,6 @@ fun ProjectListScreen(
                     }
                 }
             }
-            PullToRefreshContainer(state = pullState, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 }
@@ -123,14 +116,6 @@ fun SessionListScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by repo.browse.collectAsStateWithLifecycle()
-    val pullState = rememberPullToRefreshState()
-
-    if (pullState.isRefreshing) {
-        LaunchedEffect(Unit) { repo.refreshSessions(project.cwd) }
-    }
-    LaunchedEffect(state.loadingSessions) {
-        if (!state.loadingSessions) pullState.endRefresh()
-    }
 
     Scaffold(
         modifier = modifier,
@@ -163,7 +148,11 @@ fun SessionListScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize().nestedScroll(pullState.nestedScrollConnection)) {
+        PullToRefreshBox(
+            isRefreshing = state.loadingSessions,
+            onRefresh = { repo.refreshSessions(project.cwd) },
+            modifier = Modifier.padding(padding).fillMaxSize(),
+        ) {
             if (state.sessions.isEmpty() && state.loadingSessions) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else if (state.sessions.isEmpty()) {
@@ -200,7 +189,6 @@ fun SessionListScreen(
                     }
                 }
             }
-            PullToRefreshContainer(state = pullState, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 }

@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mikepenz.markdown.m3.Markdown
 import com.piremote.data.ChatItem
 import com.piremote.data.ToolCall
 import com.piremote.data.ToolResult
@@ -81,30 +82,69 @@ private fun AssistantBlock(
     onExpand: (Truncation) -> Unit,
     modifier: Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        item.thinking?.let { ThinkingBlock(it.preview, it.truncation, expanded, onExpand) }
+    // Three stacked cards, in the order the turn actually happened: thinking,
+    // tool calls, then the reply text. Each can fold to its header rows.
+    Column(modifier.fillMaxWidth()) {
+        item.thinking?.let { ThinkingCard(it.preview, it.truncation, expanded, onExpand) }
 
-        if (item.text.isNotBlank()) {
-            Text(item.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        if (item.toolCalls.isNotEmpty()) {
+            ToolCallsCard(item.toolCalls, expanded, onExpand)
         }
 
-        for (call in item.toolCalls) {
-            ToolCallBlock(call, expanded, onExpand)
-        }
+        if (item.text.isNotBlank() || item.error != null) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                if (item.text.isNotBlank()) {
+                    // Settled messages are fully parsed: code blocks, tables and
+                    // links read properly. The streaming bubble stays plain.
+                    // mikepenz's renderer is pure Compose and picks up the M3
+                    // dark theme (GitHub-flavoured tables/code/quotes).
+                    Markdown(item.text)
+                }
 
-        item.error?.let {
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+                item.error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One card for the whole tool segment of a turn; each call folds to a header row. */
+@Composable
+private fun ToolCallsCard(
+    calls: List<ToolCall>,
+    expanded: Map<String, String>,
+    onExpand: (Truncation) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        calls.forEachIndexed { index, call ->
+            if (index > 0) HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            ToolCallRow(call, expanded, onExpand)
         }
     }
 }
 
 @Composable
-private fun ThinkingBlock(
+private fun ThinkingCard(
     preview: String,
     truncation: Truncation?,
     expanded: Map<String, String>,
@@ -113,14 +153,22 @@ private fun ThinkingBlock(
     var open by remember { mutableStateOf(false) }
     val full = truncation?.let { expanded[it.key()] }
 
-    Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
         Row(
             Modifier
+                .fillMaxWidth()
                 .clickable {
                     open = !open
                     if (open && truncation != null && full == null) onExpand(truncation)
                 }
-                .padding(vertical = 2.dp),
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -129,14 +177,19 @@ private fun ThinkingBlock(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 2.dp),
             )
-            Text("思考", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "思考过程",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (open) {
             Text(
                 full ?: preview,
                 style = MonoStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, bottom = 4.dp),
+                modifier = Modifier.padding(start = 24.dp, bottom = 2.dp),
             )
             if (full == null && truncation != null) {
                 LoadingMore(truncation.displaySize)
@@ -146,19 +199,13 @@ private fun ThinkingBlock(
 }
 
 @Composable
-private fun ToolCallBlock(call: ToolCall, expanded: Map<String, String>, onExpand: (Truncation) -> Unit) {
+private fun ToolCallRow(call: ToolCall, expanded: Map<String, String>, onExpand: (Truncation) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val result = call.result
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-    ) {
+    Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().clickable { open = !open }.padding(horizontal = 8.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(

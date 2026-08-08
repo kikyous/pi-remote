@@ -5,6 +5,7 @@ import {
 	type AgentSessionEvent,
 	createAgentSession,
 	ModelRuntime,
+	type SessionEntry,
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
 
@@ -274,6 +275,22 @@ function publish(live: LiveAgent, event: AgentSessionEvent): void {
 	if (event.type === "entry_appended") {
 		setImmediate(() => Object.assign(live, readStat(live.path)));
 		invalidateSessionCache();
+	} else if (event.type === "message_end") {
+		// The SDK appends the message to the session manager right after
+		// emitting message_end, but the only entry_appended events it emits are
+		// for extension appendEntry() — a regular turn never produces one.
+		// Without the authoritative entry the client has nothing to render once
+		// the streaming bubble clears, so a conversation built from live events
+		// stays empty until a manual refetch. Forward it on the microtask that
+		// follows the append, when the entry exists to look up.
+		invalidateSessionCache();
+		const message = event.message;
+		if (isPersistedMessage(message)) {
+			queueMicrotask(() => {
+				const entry = findEntryForMessage(live, message);
+				if (entry) publish(live, { type: "entry_appended", entry });
+			});
+		}
 	}
 
 	const buffered: BufferedEvent = {
@@ -358,6 +375,33 @@ export async function disposeAll(): Promise<void> {
 	if (sweeper) clearInterval(sweeper);
 	sweeper = undefined;
 	await Promise.all([...agents.keys()].map(destroy));
+}
+
+/**
+ * Roles the SDK persists via message_end (see AgentSession._handleAgentEvent).
+ * Everything else — bashExecution, custom, compactionSummary, branchSummary —
+ * is appended through other paths and stays out of this forwarding.
+ */
+function isPersistedMessage(message: { role?: string }): boolean {
+	return message.role === "user" || message.role === "assistant" || message.role === "toolResult";
+}
+
+/**
+ * The entry a just-persisted message landed in.
+ *
+ * appendMessage() stores the exact message object it was handed, so reference
+ * equality is a reliable fingerprint. The leaf is the fast path — nothing else
+ * appends between message_end and our microtask — with a walk of all entries
+ * as a defensive fallback if that assumption ever breaks.
+ */
+function findEntryForMessage(live: LiveAgent, message: { role?: string }): SessionEntry | undefined {
+	const sm = live.session.sessionManager;
+	const leaf = sm.getLeafEntry();
+	if (leaf?.type === "message" && leaf.message === message) return leaf;
+	for (const entry of sm.getEntries()) {
+		if (entry.type === "message" && entry.message === message) return entry;
+	}
+	return undefined;
 }
 
 function startSweeper(): void {

@@ -11,6 +11,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // MarkdownText (com.github.jeziellago:compose-markdown) is JitPack-only.
+        maven("https://jitpack.io")
     }
 }
 

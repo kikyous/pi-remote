@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -35,18 +36,13 @@ android {
         compose = true
     }
 
-    composeOptions {
-        // Must track the Kotlin version — 1.5.14 pairs with Kotlin 1.9.24.
-        kotlinCompilerExtensionVersion = "1.5.14"
-    }
-
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.13.1")
@@ -58,7 +54,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material3:material3-window-size-class")
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("androidx.navigation:navigation-compose:2.7.7")
@@ -67,6 +62,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // Renders the settled assistant reply as Markdown (streaming stays plain text).
+    // Pure-Compose + M3 theming; GitHub-flavoured tables, code blocks and quotes.
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.27.0-rc02")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

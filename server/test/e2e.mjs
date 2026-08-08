@@ -73,6 +73,18 @@ const counts = seen.reduce((a, t) => ((a[t] = (a[t] ?? 0) + 1), a), {});
 console.log(`   收到 ${seen.length} 个事件, 最终 seq=${lastSeq}`);
 console.log("   事件统计:", JSON.stringify(counts));
 
+// Every persisted message must also arrive as entry_appended — the client
+// renders conversations from those, not from message_end. If this synthesis is
+// lost, a fresh chat stays empty until a manual refresh and no other assertion
+// would catch it.
+const messageEnds = counts.message_end ?? 0;
+const entries = counts.entry_appended ?? 0;
+if (entries !== messageEnds) {
+  console.error(`   失败: message_end=${messageEnds} 但 entry_appended=${entries}`);
+  process.exit(1);
+}
+console.log(`   entry_appended=${entries} 与 message_end=${messageEnds} 匹配 ✓`);
+
 console.log("6. 校验落盘 …");
 const page = await api(`/sessions/${id}/entries`);
 const roles = page.entries.filter((e) => e.type === "message").map((e) => e.message.role);

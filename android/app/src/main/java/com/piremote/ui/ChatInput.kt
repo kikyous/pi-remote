@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -80,7 +81,6 @@ fun ChatInput(
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             OutlinedTextField(
                 value = text,
@@ -89,32 +89,44 @@ fun ChatInput(
                 modifier = Modifier.weight(1f).heightIn(max = 160.dp),
                 maxLines = 6,
                 shape = RoundedCornerShape(20.dp),
-            )
-
-            if (running) {
-                FilledIconButton(
-                    onClick = onAbort,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
-                ) {
-                    Icon(Icons.Default.Stop, contentDescription = "中止")
-                }
-            } else {
-                FilledIconButton(
-                    onClick = {
-                        val toSend = text.trim()
-                        if (toSend.isNotEmpty()) {
-                            onSend(toSend)
-                            text = ""
+                trailingIcon = {
+                    if (running) {
+                        IconButton(
+                            onClick = onAbort,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                        ) {
+                            Icon(Icons.Default.Stop, contentDescription = "中止")
                         }
-                    },
-                    enabled = text.isNotBlank(),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
-                }
-            }
+                    } else {
+                        val canSend = text.isNotBlank()
+                        FilledIconButton(
+                            onClick = {
+                                val toSend = text.trim()
+                                if (toSend.isNotEmpty()) {
+                                    onSend(toSend)
+                                    text = ""
+                                }
+                            },
+                            enabled = canSend,
+                            modifier = Modifier.size(32.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = if (canSend) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (canSend) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "发送",
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                },
+            )
         }
     }
 }
@@ -130,7 +142,16 @@ fun StreamingBubble(
     compacting: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+    // Same card as a settled assistant message, so the live turn and the
+    // finished one read alike.
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
         if (compacting) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
@@ -160,39 +181,35 @@ fun StreamingBubble(
         }
 
         if (toolName != null) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(8.dp),
+            // One card only: the tool indicator is a plain row inside the
+            // bubble, not a nested box.
+            Row(
+                Modifier.fillMaxWidth().padding(top = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                Text(
+                    "  $toolName",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                toolSubtitle?.let {
                     Text(
-                        "  $toolName",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    toolSubtitle?.let {
-                        Text(
-                            "  $it",
-                            style = MonoStyle,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                        )
-                    }
-                }
-                if (toolOutput.isNotBlank()) {
-                    Text(
-                        toolOutput.takeLast(LIVE_OUTPUT_TAIL),
+                        "  $it",
                         style = MonoStyle,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                     )
                 }
+            }
+            if (toolOutput.isNotBlank()) {
+                Text(
+                    toolOutput.takeLast(LIVE_OUTPUT_TAIL),
+                    style = MonoStyle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }

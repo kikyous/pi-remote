@@ -1,8 +1,5 @@
 package com.piremote.ui
 
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
-import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,7 +31,6 @@ private sealed interface Screen {
     data object Settings : Screen
 }
 
-@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -101,44 +97,6 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
             modifier = modifier,
         )
         return
-    }
-
-    val windowSize = calculateWindowSizeClass(context as android.app.Activity)
-    val wide = windowSize.widthSizeClass != WindowWidthSizeClass.Compact
-
-    // On a tablet the session list and the conversation live side by side, so a
-    // session switch swaps one pane instead of navigating.
-    if (wide) {
-        val current = screen
-        val project = (current as? Screen.Sessions)?.project ?: (current as? Screen.Chat)?.project
-        if (project != null) {
-            TwoPaneLayout(
-                modifier = modifier,
-                list = {
-                    SessionListScreen(
-                        repo = repo,
-                        project = project,
-                        onOpenSession = { screen = Screen.Chat(it.id, project) },
-                        onOpenNewSession = { screen = Screen.Chat(it, project) },
-                        onBack = { screen = Screen.Projects },
-                    )
-                },
-                detail = (current as? Screen.Chat)?.let { chat ->
-                    {
-                        key(chat.sessionId) {
-                            ChatScreen(
-                                store = repo.storeFor(chat.sessionId),
-                                models = models,
-                                onFollow = repo::startFollowing,
-                                onUnfollow = repo::stopFollowing,
-                                onBack = { screen = Screen.Sessions(project) },
-                            )
-                        }
-                    }
-                },
-            )
-            return
-        }
     }
 
     when (val current = screen) {
