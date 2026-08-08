@@ -226,9 +226,9 @@ fun StreamingBubble(
     ) {
         if (compacting) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
                 Text(
-                    "  Compacting…",
+                    "Compacting…",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -237,9 +237,9 @@ fun StreamingBubble(
 
         if (thinking && text.isBlank()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
                 Text(
-                    "  Thinking…",
+                    "Thinking…",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -259,19 +259,21 @@ fun StreamingBubble(
                 Modifier.fillMaxWidth().padding(top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
                 Text(
-                    "  $toolName",
+                    toolName,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 6.dp),
                 )
                 toolSubtitle?.let {
                     Text(
-                        "  $it",
+                        it,
                         style = MonoStyle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }

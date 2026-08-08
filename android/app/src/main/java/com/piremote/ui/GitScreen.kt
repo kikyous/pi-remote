@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.piremote.data.AppRepository
 import com.piremote.net.GitChangeDto
 import com.piremote.net.GitCommitDiffDto
@@ -479,8 +480,8 @@ private fun GitCommitDetailScreen(
             else -> detail!!.files.forEach { file ->
                 Text(
                     "--- ${file.path}",
-                    style = MonoStyle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MonoStyle.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 6.dp),
                 )
                 for (hunk in file.hunks) {

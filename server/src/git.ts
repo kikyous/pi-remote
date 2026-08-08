@@ -134,7 +134,9 @@ export async function gitCommits(
 	let current: GitCommitDto | undefined;
 	for (const line of raw.split("\n")) {
 		if (line.includes("\0")) {
-			const [hash, shortHash, author, date, subject] = line.split("\0");
+			// The format ends with %x00, so the split always yields a trailing
+			// empty field — the five real ones are safe to default anyway.
+			const [hash = "", shortHash = "", author = "", date = "", subject = ""] = line.split("\0");
 			current = {
 				hash,
 				shortHash,
