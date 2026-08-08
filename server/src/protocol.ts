@@ -48,7 +48,7 @@ export interface SessionSummaryDto {
 }
 
 /** Full state for one session, including live agent state when running. */
-export interface SessionDetailDto extends SessionSummaryDto {
+	export interface SessionDetailDto extends SessionSummaryDto {
 	/** Current model as recorded in the session, or null if never set. */
 	model: { provider: string; modelId: string } | null;
 	thinkingLevel: string;
@@ -57,11 +57,19 @@ export interface SessionDetailDto extends SessionSummaryDto {
 	totalEntries: number;
 	/** True when an AgentSession is loaded and streaming. */
 	running: boolean;
+	/** Token usage of the active branch, for the context bar. */
+	context?: ContextUsageDto;
 	/**
 	 * Exact levels the current model accepts. Present only while an agent is
 	 * loaded — otherwise the client falls back to the set from `/models`.
 	 */
 	availableThinkingLevels?: string[];
+}
+
+export interface ContextUsageDto {
+	tokens: number | null;
+	contextWindow: number | null;
+	percent: number | null;
 }
 
 export interface EntryPageDto {

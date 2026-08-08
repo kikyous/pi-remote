@@ -3,13 +3,14 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { acquire, getLoaded, withPromptLock } from "./agent-pool.ts";
 import { HttpError } from "./http.ts";
 import {
+	type ContextUsageDto,
 	type ModelDto,
 	type ModelsResponseDto,
 	type PromptResultDto,
 	THINKING_LEVELS,
 	type ThinkingLevel,
 } from "./protocol.ts";
-import { invalidateSessionCache } from "./store.ts";
+import { estimateSessionTokens, invalidateSessionCache } from "./store.ts";
 
 /** Shown for a model whose session is not loaded, so exact support is unknown. */
 const STANDARD_LEVELS = ["off", "minimal", "low", "medium", "high"];
@@ -19,6 +20,40 @@ let runtime: ModelRuntime | undefined;
 async function getRuntime(): Promise<ModelRuntime> {
 	runtime ??= await ModelRuntime.create();
 	return runtime;
+}
+
+/**
+ * Token usage of the active branch.
+ *
+ * A loaded agent knows the exact usage from its last LLM response; otherwise
+ * the file is replayed through the SDK's estimator and the context window is
+ * looked up from the model registry.
+ */
+export async function sessionContextUsage(
+	sessionId: string,
+	model: { provider: string; modelId: string } | null,
+): Promise<ContextUsageDto> {
+	const live = getLoaded(sessionId);
+	if (live) {
+		const usage = live.session.getContextUsage();
+		if (usage) return usage;
+	}
+
+	const tokens = await estimateSessionTokens(sessionId);
+	let contextWindow: number | null = null;
+	if (model) {
+		try {
+			const m = (await getRuntime()).getModel(model.provider, model.modelId);
+			contextWindow = m?.contextWindow ?? null;
+		} catch {
+			contextWindow = null;
+		}
+	}
+	const percent =
+		tokens !== null && contextWindow !== null && contextWindow > 0
+			? Math.round((tokens / contextWindow) * 1000) / 10
+			: null;
+	return { tokens, contextWindow, percent };
 }
 
 export async function listModels(): Promise<ModelsResponseDto> {

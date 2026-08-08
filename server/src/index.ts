@@ -6,6 +6,7 @@ import {
 	listModels,
 	loadedSessionState,
 	sendPrompt,
+	sessionContextUsage,
 	type SessionPatch,
 	updateSession,
 } from "./commands.ts";
@@ -52,7 +53,8 @@ function main(): void {
 		// A loaded agent holds the authoritative model and thinking level — the
 		// file may lag it, or not exist yet for a session created moments ago.
 		const live = loadedSessionState(ctx.params.id!);
-		return live ? { ...detail, ...live } : detail;
+		const context = await sessionContextUsage(ctx.params.id!, detail.model);
+		return { ...detail, ...(live ?? {}), context };
 	});
 
 	router.get(`${API_PREFIX}/sessions/:id/entries`, (ctx) => {

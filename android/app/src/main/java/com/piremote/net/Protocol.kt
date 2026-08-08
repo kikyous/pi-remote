@@ -56,7 +56,15 @@ data class SessionDetailDto(
     val leafId: String? = null,
     val totalEntries: Int = 0,
     val running: Boolean = false,
+    val context: ContextUsageDto? = null,
     val availableThinkingLevels: List<String>? = null,
+)
+
+@Serializable
+data class ContextUsageDto(
+    val tokens: Int? = null,
+    val contextWindow: Int? = null,
+    val percent: Float? = null,
 )
 
 @Serializable

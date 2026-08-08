@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.piremote.data.SessionStore
 import com.piremote.net.ModelDto
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 
@@ -134,6 +135,9 @@ fun ChatScreen(
                                     append(detail.cwd.substringAfterLast('/'))
                                     detail.model?.let { append(" · ${it.modelId}") }
                                     if (detail.thinkingLevel.isNotBlank()) append(" · ${detail.thinkingLevel}")
+                                    detail.context?.percent?.let {
+                                        append(" · Context ${it.roundToInt()}%")
+                                    }
                                     if (detail.running) append(" · 运行中")
                                 },
                                 maxLines = 1,

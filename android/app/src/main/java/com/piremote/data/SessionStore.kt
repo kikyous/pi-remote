@@ -249,6 +249,18 @@ class SessionStore(
     fun lastAssistantText(): String? =
         _state.value.items.filterIsInstance<ChatItem.Assistant>().lastOrNull()?.text?.takeIf { it.isNotBlank() }
 
+    /**
+     * Refetch just the detail (model, thinking level, context usage) without
+     * touching the message list — called when a run settles so the context bar
+     * stays current without a full reload that would reset the scroll.
+     */
+    fun refreshDetail() {
+        scope.launch {
+            runCatching { client.sessionDetail(sessionId) }
+                .onSuccess { detail -> _state.update { it.copy(detail = detail) } }
+        }
+    }
+
     /* ---------------- live events ---------------- */
 
     /**
@@ -281,6 +293,9 @@ class SessionStore(
             "agent_settled" -> {
                 flushDeltasNow()
                 _streaming.value = StreamingState(running = false)
+                // Context usage changed over the run; refresh just the detail
+                // so the bar moves without a full reload.
+                refreshDetail()
             }
 
             "message_start" -> {

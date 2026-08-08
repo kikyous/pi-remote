@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 
-import { type SessionEntry, type SessionInfo, SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+	estimateTokens,
+	type SessionEntry,
+	type SessionInfo,
+	SessionManager,
+} from "@earendil-works/pi-coding-agent";
 
 import { HttpError } from "./http.ts";
 import type { EntryPageDto, ProjectDto, SessionDetailDto, SessionSummaryDto } from "./protocol.ts";
@@ -176,6 +181,27 @@ export async function getSessionDetail(id: string): Promise<SessionDetailDto> {
 function openIfWritten(path: string): SessionManager | undefined {
 	if (!existsSync(path)) return undefined;
 	return SessionManager.open(path);
+}
+
+/**
+ * Estimated token count of the active branch, without loading an agent.
+ *
+ * Uses the SDK's own per-message estimator so the number roughly matches what
+ * the loaded agent would report. null when nothing can be read.
+ */
+export async function estimateSessionTokens(id: string): Promise<number | null> {
+	try {
+		const info = await findSession(id);
+		const sm = openIfWritten(info.path);
+		if (!sm) return null;
+		let tokens = 0;
+		for (const entry of sm.buildContextEntries()) {
+			if (entry.type === "message") tokens += estimateTokens(entry.message);
+		}
+		return tokens;
+	} catch {
+		return null;
+	}
 }
 
 /**
