@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
 import com.piremote.data.ChatItem
@@ -124,7 +125,13 @@ private fun AssistantBlock(
                             lineHeight = 22.sp,
                         ),
                     )
-                    Markdown(item.text, typography = mdTypography)
+                    Markdown(
+                        item.text,
+                        typography = mdTypography,
+                        // Content-adaptive table columns instead of the library's
+                        // fixed per-column width.
+                        components = markdownComponents(table = { model -> AdaptiveMarkdownTable(model) }),
+                    )
                 }
 
                 item.error?.let {
@@ -242,7 +249,7 @@ private fun ThinkingCard(
                 modifier = Modifier.padding(end = 2.dp),
             )
             Text(
-                "思考过程",
+                "Thinking",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

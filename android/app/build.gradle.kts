@@ -42,7 +42,7 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+    val composeBom = platform("androidx.compose:compose-bom:2025.03.00")
     implementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.13.1")
@@ -64,8 +64,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // Renders the settled assistant reply as Markdown (streaming stays plain text).
-    // Pure-Compose + M3 theming; GitHub-flavoured tables, code blocks and quotes.
-    implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.27.0-rc02")
+    // Pure-Compose + M3 theming; tables need ≥0.30.0.
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.30.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
