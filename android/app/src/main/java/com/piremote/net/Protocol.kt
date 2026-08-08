@@ -67,6 +67,40 @@ data class EntryPageDto(
     val leafId: String? = null,
 )
 
+/* ---------------- git (read-only) ---------------- */
+
+@Serializable
+data class GitStatusDto(
+    val branch: String = "",
+    val changes: List<GitChangeDto> = emptyList(),
+)
+
+@Serializable
+data class GitChangeDto(
+    val path: String,
+    val status: String,
+    val added: Int,
+    val deleted: Int,
+)
+
+@Serializable
+data class GitDiffDto(
+    val path: String = "",
+    val hunks: List<GitHunkDto> = emptyList(),
+)
+
+@Serializable
+data class GitHunkDto(
+    val oldStart: Int,
+    val oldCount: Int,
+    val newStart: Int,
+    val newCount: Int,
+    val lines: List<GitDiffLineDto> = emptyList(),
+)
+
+@Serializable
+data class GitDiffLineDto(val type: String, val text: String)
+
 @Serializable
 data class FullPartDto(val content: String)
 

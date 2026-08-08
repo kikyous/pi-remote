@@ -24,14 +24,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The composer.
@@ -42,13 +41,18 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun ChatInput(
+    draft: StateFlow<String>,
+    onTextChange: (String) -> Unit,
     running: Boolean,
     queued: List<String>,
     onSend: (String) -> Unit,
     onAbort: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var text by remember { mutableStateOf("") }
+    // Collected here, not in ChatScreen: typing recomposes only the composer,
+    // and the value itself lives in the session store so it survives leaving
+    // and re-entering the chat screen.
+    val text by draft.collectAsStateWithLifecycle()
 
     // enableEdgeToEdge draws behind the system bars, so the composer has to
     // step around the navigation bar and lift for the keyboard itself.
@@ -84,7 +88,7 @@ fun ChatInput(
         ) {
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = onTextChange,
                 placeholder = { Text("发消息给 pi…") },
                 modifier = Modifier.weight(1f).heightIn(max = 160.dp),
                 maxLines = 6,
@@ -106,7 +110,7 @@ fun ChatInput(
                                 val toSend = text.trim()
                                 if (toSend.isNotEmpty()) {
                                     onSend(toSend)
-                                    text = ""
+                                    onTextChange("")
                                 }
                             },
                             enabled = canSend,

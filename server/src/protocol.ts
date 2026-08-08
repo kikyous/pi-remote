@@ -75,6 +75,38 @@ export interface EntryPageDto {
 	leafId: string | null;
 }
 
+/* ---------------- git (read-only) ---------------- */
+
+export interface GitStatusDto {
+	branch: string;
+	changes: GitChangeDto[];
+}
+
+export interface GitChangeDto {
+	path: string;
+	status: "M" | "A" | "D" | "R" | "C" | "T" | "U";
+	added: number;
+	deleted: number;
+}
+
+export interface GitDiffDto {
+	path: string;
+	hunks: GitHunkDto[];
+}
+
+export interface GitHunkDto {
+	oldStart: number;
+	oldCount: number;
+	newStart: number;
+	newCount: number;
+	lines: GitDiffLineDto[];
+}
+
+export interface GitDiffLineDto {
+	type: "context" | "add" | "remove";
+	text: string;
+}
+
 export interface ModelDto {
 	provider: string;
 	id: string;

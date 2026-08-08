@@ -14,12 +14,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -63,10 +64,16 @@ fun SessionControls(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AssistChip(
+        SuggestionChip(
             onClick = { sheet = Sheet.Model },
             label = { Text(currentModelDto?.name ?: currentModel?.modelId ?: "选择模型", maxLines = 1) },
-            colors = AssistChipDefaults.assistChipColors(),
+            icon = {
+                Icon(
+                    Icons.Outlined.SmartToy,
+                    contentDescription = "模型",
+                    modifier = Modifier.size(18.dp),
+                )
+            },
         )
 
         // Only meaningful when the model reasons at all.
@@ -74,9 +81,16 @@ fun SessionControls(
             ?: currentModelDto?.thinkingLevels
             ?: emptyList()
         if (levels.size > 1) {
-            AssistChip(
+            SuggestionChip(
                 onClick = { sheet = Sheet.Thinking(levels) },
-                label = { Text("思考：${detail?.thinkingLevel?.ifBlank { "默认" } ?: "默认"}", maxLines = 1) },
+                label = { Text(detail?.thinkingLevel?.ifBlank { "默认" } ?: "默认", maxLines = 1) },
+                icon = {
+                    Icon(
+                        Icons.Outlined.Psychology,
+                        contentDescription = "思考等级",
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
             )
         }
     }

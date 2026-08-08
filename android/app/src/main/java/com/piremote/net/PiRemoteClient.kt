@@ -64,6 +64,14 @@ class PiRemoteClient(
 
     suspend fun models(): ModelsResponseDto = get("models")
 
+    /* ---------------- git (read-only) ---------------- */
+
+    suspend fun gitStatus(cwd: String): GitStatusDto =
+        get("git/status?cwd=${encodeCwd(cwd)}")
+
+    suspend fun gitDiff(cwd: String, path: String): GitDiffDto =
+        get("git/diff?cwd=${encodeCwd(cwd)}&file=${encodeCwd(path)}")
+
     suspend fun createSession(
         cwd: String,
         provider: String? = null,

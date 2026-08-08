@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Commit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -58,6 +59,7 @@ fun ChatScreen(
     onFollow: (String) -> Unit,
     onUnfollow: (String) -> Unit,
     onBack: () -> Unit,
+    onOpenGit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by store.state.collectAsStateWithLifecycle()
@@ -143,6 +145,9 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenGit) {
+                        Icon(Icons.Outlined.Commit, contentDescription = "Git 改动")
+                    }
                     IconButton(onClick = { store.refresh() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "刷新")
                     }
@@ -158,6 +163,8 @@ fun ChatScreen(
                     onPickThinking = store::setThinkingLevel,
                 )
                 ChatInput(
+                    draft = store.draft,
+                    onTextChange = store::setDraft,
                     running = streaming.running,
                     queued = streaming.queued,
                     onSend = { store.send(it) },

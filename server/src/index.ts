@@ -10,6 +10,7 @@ import {
 	updateSession,
 } from "./commands.ts";
 import { lanAddresses, parseArgs } from "./config.ts";
+import { gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
 import { API_PREFIX } from "./protocol.ts";
 import type { FullPart } from "./slim.ts";
@@ -70,6 +71,14 @@ function main(): void {
 	});
 
 	router.get(`${API_PREFIX}/models`, () => listModels());
+
+	// Read-only git queries for the repo a session lives in.
+	router.get(`${API_PREFIX}/git/status`, (ctx) => gitStatus(decodeCwd(ctx.query.get("cwd"))));
+	router.get(`${API_PREFIX}/git/diff`, (ctx) => {
+		const file = ctx.query.get("file");
+		if (!file) throw new HttpError(400, "Missing file parameter", "missing_file");
+		return gitDiff(decodeCwd(ctx.query.get("cwd")), decodeBase64Url(file));
+	});
 
 	router.post(`${API_PREFIX}/sessions`, (ctx) => {
 		const body = asRecord(ctx.body);
@@ -134,6 +143,13 @@ function main(): void {
  * non-ASCII segments survive the query string unambiguously.
  */
 export function decodeCwd(raw: string | null): string {
+	const decoded = decodeBase64Url(raw);
+	if (!decoded.startsWith("/")) throw new HttpError(400, "cwd must be an absolute path", "bad_cwd");
+	return decoded;
+}
+
+/** Base64url decode without the absolute-path requirement (git file paths). */
+export function decodeBase64Url(raw: string | null): string {
 	if (!raw) throw new HttpError(400, "Missing cwd parameter", "missing_cwd");
 	let decoded: string;
 	try {
@@ -141,7 +157,6 @@ export function decodeCwd(raw: string | null): string {
 	} catch {
 		throw new HttpError(400, "cwd is not valid base64url", "bad_cwd");
 	}
-	if (!decoded.startsWith("/")) throw new HttpError(400, "cwd must be an absolute path", "bad_cwd");
 	return decoded;
 }
 

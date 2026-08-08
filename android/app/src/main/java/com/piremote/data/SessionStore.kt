@@ -55,6 +55,18 @@ class SessionStore(
     private val _streaming = MutableStateFlow(StreamingState())
     val streaming: StateFlow<StreamingState> = _streaming.asStateFlow()
 
+    /**
+     * Composer draft text. Lives here, not in the UI: leaving the chat screen
+     * (e.g. to the git view) disposes the input's local state, but the store is
+     * cached per session, so the draft survives navigation.
+     */
+    private val _draft = MutableStateFlow("")
+    val draft: StateFlow<String> = _draft.asStateFlow()
+
+    fun setDraft(text: String) {
+        _draft.value = text
+    }
+
     private val epoch = AtomicLong(0)
     private val pagingLock = Mutex()
     private var oldestId: String? = null

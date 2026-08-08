@@ -29,6 +29,8 @@ private sealed interface Screen {
     data class Sessions(val project: ProjectDto) : Screen
     /** Carries the project so Back knows where it came from. */
     data class Chat(val sessionId: String, val project: ProjectDto) : Screen
+    /** Git changes/diffs for the repo [cwd]; back returns to [backTo]. */
+    data class Git(val cwd: String, val backTo: Screen) : Screen
     data object Settings : Screen
 }
 
@@ -74,6 +76,7 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
             Screen.Settings -> screen = Screen.Projects
             is Screen.Sessions -> screen = Screen.Projects
             is Screen.Chat -> screen = Screen.Sessions(current.project)
+            is Screen.Git -> screen = current.backTo
         }
     }
 
@@ -142,9 +145,17 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                     onFollow = repo::startFollowing,
                     onUnfollow = repo::stopFollowing,
                     onBack = { screen = Screen.Sessions(current.project) },
+                    onOpenGit = { screen = Screen.Git(current.project.cwd, current) },
                     modifier = modifier,
                 )
             }
+
+        is Screen.Git -> GitScreen(
+            repo = repo,
+            cwd = current.cwd,
+            onBack = { screen = current.backTo },
+            modifier = modifier,
+        )
 
         Screen.Settings -> ConnectScreen(
             initial = connection,
