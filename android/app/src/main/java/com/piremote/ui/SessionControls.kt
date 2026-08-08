@@ -1,33 +1,24 @@
 package com.piremote.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -35,96 +26,59 @@ import androidx.compose.ui.unit.dp
 import com.piremote.net.ModelDto
 import com.piremote.net.SessionDetailDto
 
+/** Which picker sheet is open, if any. Hoisted by the caller so the composer's
+ *  "更多" menu can open them. */
+enum class SessionSheet { Model, Thinking }
+
 /**
- * Per-session model and thinking controls, sitting above the composer.
+ * Bottom-sheet pickers for the per-session model and thinking level.
  *
  * Both are scoped to this session: pi records the change as an entry in this
  * session's file, so two sessions can run different models at once.
  */
 @Composable
-fun SessionControls(
+fun SessionPickerSheets(
     detail: SessionDetailDto?,
     models: List<ModelDto>,
+    sheet: SessionSheet?,
+    onDismiss: () -> Unit,
     onPickModel: (ModelDto) -> Unit,
     onPickThinking: (String) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    var sheet by remember { mutableStateOf<Sheet?>(null) }
-
     val currentModel = detail?.model
     val currentModelDto = models.firstOrNull {
         it.provider == currentModel?.provider && it.id == currentModel.modelId
     }
+    // Only meaningful when the model reasons at all.
+    val levels = detail?.availableThinkingLevels
+        ?: currentModelDto?.thinkingLevels
+        ?: emptyList()
 
-    Row(
-        modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SuggestionChip(
-            onClick = { sheet = Sheet.Model },
-            label = { Text(currentModelDto?.name ?: currentModel?.modelId ?: "选择模型", maxLines = 1) },
-            icon = {
-                Icon(
-                    Icons.Outlined.SmartToy,
-                    contentDescription = "模型",
-                    modifier = Modifier.size(18.dp),
-                )
-            },
-        )
-
-        // Only meaningful when the model reasons at all.
-        val levels = detail?.availableThinkingLevels
-            ?: currentModelDto?.thinkingLevels
-            ?: emptyList()
-        if (levels.size > 1) {
-            SuggestionChip(
-                onClick = { sheet = Sheet.Thinking(levels) },
-                label = { Text(detail?.thinkingLevel?.ifBlank { "默认" } ?: "默认", maxLines = 1) },
-                icon = {
-                    Icon(
-                        Icons.Outlined.Psychology,
-                        contentDescription = "思考等级",
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-        }
-    }
-
-    when (val open = sheet) {
-        Sheet.Model -> PickerSheet(
+    when (sheet) {
+        SessionSheet.Model -> PickerSheet(
             title = "模型",
             options = models.map { PickerOption(it.key, it.name, it.provider) },
             selectedKey = currentModelDto?.key,
-            onDismiss = { sheet = null },
+            onDismiss = onDismiss,
             onPick = { key ->
                 models.firstOrNull { it.key == key }?.let(onPickModel)
-                sheet = null
+                onDismiss()
             },
         )
 
-        is Sheet.Thinking -> PickerSheet(
+        SessionSheet.Thinking -> PickerSheet(
             title = "思考等级",
-            options = open.levels.map { PickerOption(it, it, null) },
+            options = levels.map { PickerOption(it, it, null) },
             selectedKey = detail?.thinkingLevel,
-            onDismiss = { sheet = null },
+            onDismiss = onDismiss,
             onPick = {
                 onPickThinking(it)
-                sheet = null
+                onDismiss()
             },
         )
 
         null -> Unit
     }
-}
-
-private sealed interface Sheet {
-    data object Model : Sheet
-    data class Thinking(val levels: List<String>) : Sheet
 }
 
 private data class PickerOption(val key: String, val label: String, val subtitle: String?)

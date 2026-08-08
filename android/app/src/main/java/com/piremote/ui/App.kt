@@ -68,15 +68,16 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
     var screen by remember { mutableStateOf<Screen>(Screen.Projects) }
 
     // System back pops the navigation stack instead of exiting the app:
-    // Chat → Sessions → Projects; only the root finishes the activity. This
-    // mirrors what the top-bar arrows do, so both paths agree.
-    BackHandler {
+    // Chat → Sessions → Projects. On the root the handler is disabled so the
+    // system default (finishing the activity) applies — a registered BackHandler
+    // always consumes the key, it never falls through.
+    BackHandler(enabled = screen !is Screen.Projects) {
         when (val current = screen) {
-            Screen.Projects -> Unit // root — fall through to the system default
             Screen.Settings -> screen = Screen.Projects
             is Screen.Sessions -> screen = Screen.Projects
             is Screen.Chat -> screen = Screen.Sessions(current.project)
             is Screen.Git -> screen = current.backTo
+            Screen.Projects -> Unit // unreachable: handler is disabled here
         }
     }
 
@@ -146,6 +147,13 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                     onUnfollow = repo::stopFollowing,
                     onBack = { screen = Screen.Sessions(current.project) },
                     onOpenGit = { screen = Screen.Git(current.project.cwd, current) },
+                    onNewSession = {
+                        // Same directory as the current session; back from the
+                        // new one lands on the same project list.
+                        repo.createSession(current.project.cwd) { newId ->
+                            screen = Screen.Chat(newId, current.project)
+                        }
+                    },
                     modifier = modifier,
                 )
             }

@@ -32,7 +32,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,12 +63,26 @@ fun ChatScreen(
     onUnfollow: (String) -> Unit,
     onBack: () -> Unit,
     onOpenGit: () -> Unit,
+    onNewSession: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by store.state.collectAsStateWithLifecycle()
     val streaming by store.streaming.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
+
+    // Which picker bottom sheet (model / thinking level) is open; opened from
+    // the composer's "更多" menu.
+    var sheet by remember { mutableStateOf<SessionSheet?>(null) }
+
+    val currentModel = state.detail?.model
+    val currentModelDto = models.firstOrNull {
+        it.provider == currentModel?.provider && it.id == currentModel.modelId
+    }
+    // Thinking level is only meaningful when the model reasons at all.
+    val canPickThinking = (state.detail?.availableThinkingLevels
+        ?: currentModelDto?.thinkingLevels
+        ?: emptyList()).size > 1
 
     // Load once per session. `store` identity changes when the session does.
     LaunchedEffect(store) {
@@ -160,9 +176,11 @@ fun ChatScreen(
         },
         bottomBar = {
             Column {
-                SessionControls(
+                SessionPickerSheets(
                     detail = state.detail,
                     models = models,
+                    sheet = sheet,
+                    onDismiss = { sheet = null },
                     onPickModel = { store.setModel(it.provider, it.id) },
                     onPickThinking = store::setThinkingLevel,
                 )
@@ -173,6 +191,11 @@ fun ChatScreen(
                     queued = streaming.queued,
                     onSend = { store.send(it) },
                     onAbort = store::abort,
+                    onPickModel = { sheet = SessionSheet.Model },
+                    onPickThinking = if (canPickThinking) {
+                        { sheet = SessionSheet.Thinking }
+                    } else null,
+                    onNewSession = onNewSession,
                 )
             }
         },

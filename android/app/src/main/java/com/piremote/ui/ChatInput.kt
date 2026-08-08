@@ -2,6 +2,7 @@ package com.piremote.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,8 +14,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.NoteAdd
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,11 +31,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
 
@@ -47,12 +59,22 @@ fun ChatInput(
     queued: List<String>,
     onSend: (String) -> Unit,
     onAbort: () -> Unit,
+    onPickModel: () -> Unit,
+    onPickThinking: (() -> Unit)?,
+    onNewSession: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Collected here, not in ChatScreen: typing recomposes only the composer,
     // and the value itself lives in the session store so it survives leaving
     // and re-entering the chat screen.
     val text by draft.collectAsStateWithLifecycle()
+
+    // The "更多" menu: model and thinking level live here now.
+    var moreOpen by remember { mutableStateOf(false) }
+
+    // Back closes the menu first, not the whole screen. The menu popup itself
+    // is non-focusable, so opening it never steals focus from the text field.
+    BackHandler(enabled = moreOpen) { moreOpen = false }
 
     // enableEdgeToEdge draws behind the system bars, so the composer has to
     // step around the navigation bar and lift for the keyboard itself.
@@ -93,6 +115,52 @@ fun ChatInput(
                 modifier = Modifier.weight(1f).heightIn(max = 160.dp),
                 maxLines = 6,
                 shape = RoundedCornerShape(20.dp),
+                leadingIcon = {
+                    Box {
+                        IconButton(onClick = { moreOpen = true }) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "更多",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = moreOpen,
+                            onDismissRequest = { moreOpen = false },
+                            // focusable = false: opening the menu must not take
+                            // focus away from the input — the keyboard stays up
+                            // and the field keeps its current activation state.
+                            properties = PopupProperties(focusable = false),
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("切换模型") },
+                                leadingIcon = { Icon(Icons.Outlined.SmartToy, contentDescription = null) },
+                                onClick = {
+                                    moreOpen = false
+                                    onPickModel()
+                                },
+                            )
+                            onPickThinking?.let { pick ->
+                                DropdownMenuItem(
+                                    text = { Text("思考等级") },
+                                    leadingIcon = { Icon(Icons.Outlined.Psychology, contentDescription = null) },
+                                    onClick = {
+                                        moreOpen = false
+                                        pick()
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("新建会话") },
+                                leadingIcon = { Icon(Icons.Outlined.NoteAdd, contentDescription = null) },
+                                onClick = {
+                                    moreOpen = false
+                                    onNewSession()
+                                },
+                            )
+                        }
+                    }
+                },
                 trailingIcon = {
                     if (running) {
                         IconButton(
