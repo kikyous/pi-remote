@@ -72,6 +72,14 @@ class PiRemoteClient(
     suspend fun gitDiff(cwd: String, path: String): GitDiffDto =
         get("git/diff?cwd=${encodeCwd(cwd)}&file=${encodeCwd(path)}")
 
+    suspend fun gitCommits(cwd: String, limit: Int = 20, before: String? = null): GitCommitsPageDto {
+        val cursor = if (before != null) "&before=$before" else ""
+        return get("git/commits?cwd=${encodeCwd(cwd)}&limit=$limit$cursor")
+    }
+
+    suspend fun gitCommitDiff(cwd: String, sha: String): GitCommitDiffDto =
+        get("git/commit?cwd=${encodeCwd(cwd)}&sha=$sha")
+
     suspend fun createSession(
         cwd: String,
         provider: String? = null,

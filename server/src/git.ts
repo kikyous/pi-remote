@@ -3,7 +3,16 @@ import { spawn } from "node:child_process";
 import { resolve, sep } from "node:path";
 
 import { HttpError } from "./http.ts";
-import type { GitChangeDto, GitDiffDto, GitHunkDto, GitStatusDto } from "./protocol.ts";
+import type {
+	GitChangeDto,
+	GitCommitDiffDto,
+	GitCommitDto,
+	GitCommitsPageDto,
+	GitDiffDto,
+	GitFileDiffDto,
+	GitHunkDto,
+	GitStatusDto,
+} from "./protocol.ts";
 
 /**
  * Read-only git queries for the repository a session lives in.
@@ -102,6 +111,104 @@ export async function gitDiff(cwd: string, path: string): Promise<GitDiffDto> {
 
 	const raw = await runGit(cwd, ["diff", "--", path]);
 	return { path, hunks: parseUnifiedDiff(raw) };
+}
+
+const LOG_FORMAT = "--format=%H%x00%h%x00%aN%x00%aI%x00%s%x00";
+
+/**
+ * A page of commit history, newest first.
+ *
+ * `git log --numstat` puts each commit's per-file line counts right after it,
+ * which gives us the +x/-y summary in the same pass as the list.
+ */
+export async function gitCommits(
+	cwd: string,
+	limit: number,
+	before: string | undefined,
+): Promise<GitCommitsPageDto> {
+	const args = ["log", "--numstat", LOG_FORMAT, "--max-count", String(limit)];
+	if (before) args.push(before + "^");
+	const raw = await runGit(cwd, args);
+
+	const commits: GitCommitDto[] = [];
+	let current: GitCommitDto | undefined;
+	for (const line of raw.split("\n")) {
+		if (line.includes("\0")) {
+			const [hash, shortHash, author, date, subject] = line.split("\0");
+			current = {
+				hash,
+				shortHash,
+				author,
+				date,
+				subject: subject ?? "",
+				added: 0,
+				deleted: 0,
+			};
+			commits.push(current);
+			continue;
+		}
+		// A numstat row: "adds\tdels\tpath" — merge commits have none.
+		if (current && line.length > 0) {
+			const [adds, dels] = line.split("\t");
+			const added = Number(adds);
+			const deleted = Number(dels);
+			if (Number.isInteger(added) && Number.isInteger(deleted)) {
+				current.added += added;
+				current.deleted += deleted;
+			}
+		}
+	}
+
+	let nextCursor: string | null = null;
+	const last = commits.at(-1);
+	if (last) {
+		const parent = await runGit(cwd, ["rev-parse", "--verify", "--quiet", last.hash + "^"]).catch(() => "");
+		nextCursor = parent.trim() || null;
+	}
+	return { commits, nextCursor };
+}
+
+/** One commit's full diff, split per file. */
+export async function gitCommitDiff(cwd: string, sha: string): Promise<GitCommitDiffDto> {
+	const raw = await runGit(cwd, ["show", "--format=", sha]);
+	const [infoRaw] = await Promise.all([
+		runGit(cwd, ["show", "--no-patch", "--format=%H%x00%h%x00%aN%x00%aI%x00%s%x00", sha]),
+	]);
+	const [hash, shortHash, author, date, subject] = infoRaw.split("\0");
+	return {
+		sha: hash ?? sha,
+		shortHash: shortHash ?? sha.slice(0, 7),
+		subject: subject ?? "",
+		author: author ?? "",
+		date: date ?? "",
+		files: parseMultiFileDiff(raw),
+	};
+}
+
+function parseMultiFileDiff(raw: string): GitFileDiffDto[] {
+	const files: GitFileDiffDto[] = [];
+	// Each file's section starts with a "diff --git" line.
+	const parts = raw.split(/^diff --git /m).slice(1);
+	for (const part of parts) {
+		const firstLine = part.split("\n", 1)[0] ?? "";
+		// "a/old b/new" — take the new path, or the old for deletions.
+		const newPath = firstLine.split(" b/").pop() ?? "";
+		files.push({
+			path: newPath.replace(/^"|"$/g, ""),
+			status: fileStatus(part),
+			hunks: parseUnifiedDiff("diff --git " + part),
+		});
+	}
+	return files;
+}
+
+function fileStatus(block: string): GitFileDiffDto["status"] {
+	if (block.includes("new file mode")) return "A";
+	if (block.includes("deleted file mode")) return "D";
+	if (block.includes("rename from")) return "R";
+	if (block.includes("copy from")) return "C";
+	if (block.includes("old mode") || block.includes("new mode")) return "T";
+	return "M";
 }
 
 function isTracked(cwd: string, path: string): Promise<boolean> {

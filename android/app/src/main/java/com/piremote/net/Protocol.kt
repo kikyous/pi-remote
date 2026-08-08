@@ -98,6 +98,40 @@ data class GitDiffDto(
 )
 
 @Serializable
+data class GitCommitDto(
+    val hash: String,
+    val shortHash: String,
+    val subject: String,
+    val author: String,
+    val date: String,
+    val added: Int,
+    val deleted: Int,
+)
+
+@Serializable
+data class GitCommitsPageDto(
+    val commits: List<GitCommitDto> = emptyList(),
+    val nextCursor: String? = null,
+)
+
+@Serializable
+data class GitCommitDiffDto(
+    val sha: String = "",
+    val shortHash: String = "",
+    val subject: String = "",
+    val author: String = "",
+    val date: String = "",
+    val files: List<GitFileDiffDto> = emptyList(),
+)
+
+@Serializable
+data class GitFileDiffDto(
+    val path: String,
+    val status: String,
+    val hunks: List<GitHunkDto> = emptyList(),
+)
+
+@Serializable
 data class GitHunkDto(
     val oldStart: Int,
     val oldCount: Int,

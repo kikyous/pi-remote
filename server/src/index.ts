@@ -11,7 +11,7 @@ import {
 	updateSession,
 } from "./commands.ts";
 import { lanAddresses, parseArgs } from "./config.ts";
-import { gitDiff, gitStatus } from "./git.ts";
+import { gitCommitDiff, gitCommits, gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
 import { API_PREFIX } from "./protocol.ts";
 import type { FullPart } from "./slim.ts";
@@ -80,6 +80,15 @@ function main(): void {
 		const file = ctx.query.get("file");
 		if (!file) throw new HttpError(400, "Missing file parameter", "missing_file");
 		return gitDiff(decodeCwd(ctx.query.get("cwd")), decodeBase64Url(file));
+	});
+	router.get(`${API_PREFIX}/git/commits`, (ctx) => {
+		const before = ctx.query.get("before");
+		return gitCommits(decodeCwd(ctx.query.get("cwd")), parseLimit(ctx.query.get("limit")), before ?? undefined);
+	});
+	router.get(`${API_PREFIX}/git/commit`, (ctx) => {
+		const sha = ctx.query.get("sha");
+		if (!sha) throw new HttpError(400, "Missing sha parameter", "missing_sha");
+		return gitCommitDiff(decodeCwd(ctx.query.get("cwd")), sha);
 	});
 
 	router.post(`${API_PREFIX}/sessions`, (ctx) => {

@@ -102,6 +102,37 @@ export interface GitDiffDto {
 	hunks: GitHunkDto[];
 }
 
+export interface GitCommitDto {
+	hash: string;
+	shortHash: string;
+	subject: string;
+	author: string;
+	date: string;
+	added: number;
+	deleted: number;
+}
+
+export interface GitCommitsPageDto {
+	commits: GitCommitDto[];
+	/** Cursor for the older page (parent of the last commit), or null. */
+	nextCursor: string | null;
+}
+
+export interface GitCommitDiffDto {
+	sha: string;
+	shortHash: string;
+	subject: string;
+	author: string;
+	date: string;
+	files: GitFileDiffDto[];
+}
+
+export interface GitFileDiffDto {
+	path: string;
+	status: "M" | "A" | "D" | "R" | "C" | "T";
+	hunks: GitHunkDto[];
+}
+
 export interface GitHunkDto {
 	oldStart: number;
 	oldCount: number;
