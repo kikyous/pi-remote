@@ -53,7 +53,17 @@ data class ToolCall(
     val truncation: Truncation?,
     /** Filled in by [linkToolResults]. */
     val result: ToolResult? = null,
+    /** Parsed when the call is an edit: renders as a unified diff instead of JSON. */
+    val diff: EditDiff? = null,
 )
+
+/** The edit tool's arguments, rendered as red/green diff lines. */
+data class EditDiff(
+    val filePath: String?,
+    val hunks: List<EditHunk> = emptyList(),
+)
+
+data class EditHunk(val oldText: String, val newText: String)
 
 data class ToolResult(
     /** The `toolCallId` that produced this, used to pair it with its call. */
@@ -156,7 +166,24 @@ private fun parseToolCall(entryId: String, block: JsonObject): ToolCall {
         arguments = args?.prettyPrint().orEmpty(),
         subtitle = args?.headlineArgument(),
         truncation = block.truncation(entryId),
+        diff = args?.let(::parseEditDiff),
     )
+}
+
+/**
+ * An edit call carries `{path, edits: [{oldText, newText}, …]}`. Recognised by
+ * the edits array whatever the tool name, so renamed tools keep working.
+ */
+private fun parseEditDiff(args: JsonObject): EditDiff? {
+    val edits = args["edits"] as? JsonArray ?: return null
+    val hunks = edits.mapNotNull { edit ->
+        val obj = edit as? JsonObject ?: return@mapNotNull null
+        val old = obj.str("oldText") ?: return@mapNotNull null
+        val new = obj.str("newText") ?: return@mapNotNull null
+        EditHunk(old, new)
+    }
+    if (hunks.isEmpty()) return null
+    return EditDiff(filePath = args.str("path") ?: args.str("file_path"), hunks = hunks)
 }
 
 private fun parseToolResult(entryId: String, message: JsonObject): ToolResult {

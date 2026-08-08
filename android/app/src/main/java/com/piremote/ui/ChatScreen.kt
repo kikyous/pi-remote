@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -192,12 +193,16 @@ fun ChatScreen(
                         modifier = Modifier.align(Alignment.Center),
                     )
 
-                else -> LazyColumn(
-                    state = listState,
-                    reverseLayout = true,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
-                ) {
+                else -> SelectionContainer {
+                    // One container for the whole list, not one per message:
+                    // with per-message containers a selection in one card stays
+                    // stuck when tapping another. A single scope clears it.
+                    LazyColumn(
+                        state = listState,
+                        reverseLayout = true,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+                    ) {
                     if (streaming.hasContent || streaming.compacting) {
                         item(key = "streaming") {
                             StreamingBubble(
@@ -236,6 +241,7 @@ fun ChatScreen(
                                 )
                             }
                         }
+                    }
                     }
                 }
             }

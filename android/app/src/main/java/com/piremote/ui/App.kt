@@ -1,5 +1,6 @@
 package com.piremote.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -63,6 +64,18 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
 
     val models by repo.models.collectAsStateWithLifecycle()
     var screen by remember { mutableStateOf<Screen>(Screen.Projects) }
+
+    // System back pops the navigation stack instead of exiting the app:
+    // Chat → Sessions → Projects; only the root finishes the activity. This
+    // mirrors what the top-bar arrows do, so both paths agree.
+    BackHandler {
+        when (val current = screen) {
+            Screen.Projects -> Unit // root — fall through to the system default
+            Screen.Settings -> screen = Screen.Projects
+            is Screen.Sessions -> screen = Screen.Projects
+            is Screen.Chat -> screen = Screen.Sessions(current.project)
+        }
+    }
 
     // Returning to the foreground: reconnect, then bring the visible session up
     // to date. The socket resumes from its last seq, but anything that happened

@@ -28,11 +28,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownTypography
 import com.piremote.data.ChatItem
+import com.piremote.data.EditDiff
 import com.piremote.data.ToolCall
 import com.piremote.data.ToolResult
 import com.piremote.data.Truncation
@@ -103,9 +109,22 @@ private fun AssistantBlock(
                 if (item.text.isNotBlank()) {
                     // Settled messages are fully parsed: code blocks, tables and
                     // links read properly. The streaming bubble stays plain.
-                    // mikepenz's renderer is pure Compose and picks up the M3
-                    // dark theme (GitHub-flavoured tables/code/quotes).
-                    Markdown(item.text)
+                    // Heading sizes are pinned to GitHub-like proportions — the
+                    // library's M3 defaults map h1 to 57sp displayLarge.
+                    val mdTypography = markdownTypography(
+                        h1 = heading(28.sp, FontWeight.Bold),
+                        h2 = heading(22.sp, FontWeight.Bold),
+                        h3 = heading(19.sp, FontWeight.Bold),
+                        h4 = heading(16.sp, FontWeight.Bold),
+                        h5 = heading(14.sp, FontWeight.Bold),
+                        h6 = heading(13.sp, FontWeight.Bold, muted = true),
+                        paragraph = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp,
+                        ),
+                    )
+                    Markdown(item.text, typography = mdTypography)
                 }
 
                 item.error?.let {
@@ -122,6 +141,104 @@ private fun AssistantBlock(
 }
 
 /** One card for the whole tool segment of a turn; each call folds to a header row. */
+/** GitHub-like heading text style: body-relative sizes, bold, on-surface. */
+@Composable
+private fun heading(size: TextUnit, weight: FontWeight, muted: Boolean = false): TextStyle =
+    TextStyle(
+        color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant
+        else MaterialTheme.colorScheme.onSurface,
+        fontSize = size,
+        fontWeight = weight,
+    )
+
+/** GitHub diff palette, theme-aware: bright on dark, deep on light. */
+@Composable
+private fun diffPalette(): Pair<Color, Color> {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    return if (dark) {
+        Color(0xFF7EE787) to Color(0xFFFF7B72) // added, removed
+    } else {
+        Color(0xFF1A7F37) to Color(0xFFCF222E) // GitHub light: deep green, deep red
+    }
+}
+
+/**
+ * Render an edit call's oldText/newText as a unified diff.
+ *
+ * A full Myers diff is overkill for tool hunks: trimming the common prefix and
+ * suffix, then showing the middle as removed-then-added, reads exactly like a
+ * real edit for the sizes pi actually produces.
+ */
+@Composable
+private fun EditDiffView(diff: EditDiff, modifier: Modifier = Modifier) {
+    // No horizontal scroll here: per-line backgrounds need a bounded width to
+    // span the card. Long lines wrap instead of scrolling.
+    Column(modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        diff.filePath?.let {
+            Text(
+                "--- $it",
+                style = MonoStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 2.dp),
+            )
+        }
+        diff.hunks.forEachIndexed { index, hunk ->
+            if (index > 0) {
+                Text(
+                    "···",
+                    style = MonoStyle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+            }
+            val rows = simpleLineDiff(hunk.oldText.lines(), hunk.newText.lines())
+            for (row in rows) {
+                DiffLine(row)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiffLine(row: DiffRow) {
+    val (added, removed) = diffPalette()
+    val (bg, fg, prefix) = when (row.kind) {
+        DiffKind.Added -> Triple(added.copy(alpha = 0.16f), added, "+")
+        DiffKind.Removed -> Triple(removed.copy(alpha = 0.16f), removed, "-")
+        DiffKind.Context -> Triple(Color.Transparent, MaterialTheme.colorScheme.onSurfaceVariant, " ")
+    }
+    Text(
+        "$prefix ${row.text}",
+        style = MonoStyle,
+        color = fg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+private enum class DiffKind { Added, Removed, Context }
+
+private data class DiffRow(val text: String, val kind: DiffKind)
+
+/** Line diff: common prefix, common suffix, the middle as removed → added. */
+private fun simpleLineDiff(oldLines: List<String>, newLines: List<String>): List<DiffRow> {
+    var prefix = 0
+    while (prefix < oldLines.size && prefix < newLines.size && oldLines[prefix] == newLines[prefix]) prefix++
+    var suffix = 0
+    while (suffix < oldLines.size - prefix && suffix < newLines.size - prefix &&
+        oldLines[oldLines.size - 1 - suffix] == newLines[newLines.size - 1 - suffix]
+    ) suffix++
+
+    val rows = mutableListOf<DiffRow>()
+    for (i in 0 until prefix) rows += DiffRow(oldLines[i], DiffKind.Context)
+    for (i in prefix until oldLines.size - suffix) rows += DiffRow(oldLines[i], DiffKind.Removed)
+    for (i in prefix until newLines.size - suffix) rows += DiffRow(newLines[i], DiffKind.Added)
+    for (i in 0 until suffix) rows += DiffRow(oldLines[oldLines.size - suffix + i], DiffKind.Context)
+    return rows
+}
+
 @Composable
 private fun ToolCallsCard(
     calls: List<ToolCall>,
@@ -227,7 +344,10 @@ private fun ToolCallRow(call: ToolCall, expanded: Map<String, String>, onExpand:
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    modifier = Modifier.weight(1f, fill = false),
+                    // weight(fill=true): the text is constrained to the row's
+                    // remaining width and ellipsizes at the true end. fill=false
+                    // would measure at intrinsic width and overflow the card.
+                    modifier = Modifier.weight(1f),
                 )
             }
             if (result?.isError == true) {
@@ -237,10 +357,13 @@ private fun ToolCallRow(call: ToolCall, expanded: Map<String, String>, onExpand:
 
         if (open) {
             Column(Modifier.padding(start = 12.dp, end = 8.dp, bottom = 8.dp)) {
-                if (call.arguments.isNotBlank()) {
+                val diff = call.diff
+                if (diff != null) {
+                    EditDiffView(diff)
+                } else if (call.arguments.isNotBlank()) {
                     ScrollableCode(call.arguments)
-                    call.truncation?.let { ExpandRow(it, expanded, onExpand) }
                 }
+                call.truncation?.let { ExpandRow(it, expanded, onExpand) }
                 if (result != null) {
                     HorizontalDivider(Modifier.padding(vertical = 6.dp))
                     ToolResultBody(result, expanded, onExpand)
@@ -364,8 +487,10 @@ private fun ExpandRow(truncation: Truncation, expanded: Map<String, String>, onE
 /**
  * Shorten a tool argument for the collapsed row.
  *
- * Paths are cut from the front: the tail (`src/ui/Chat.kt`) identifies the file,
- * while the leading `/Users/chen/…` is the same on every row and says nothing.
+ * Paths are cut from the front: the tail identifies the file, while the
+ * leading `/Users/chen/…` is the same on every row and says nothing. The limit
+ * is generous because the row's own ellipsis handles narrow screens; this only
+ * avoids shipping megabytes of args over a header.
  */
 private fun String.compactForRow(): String {
     val flat = replace('\n', ' ').trim()
@@ -378,7 +503,7 @@ private fun String.compactForRow(): String {
     return flat.take(ROW_ARG_LIMIT) + "…"
 }
 
-private const val ROW_ARG_LIMIT = 44
+private const val ROW_ARG_LIMIT = 160
 
 @Composable
 private fun LoadingMore(size: String) {
