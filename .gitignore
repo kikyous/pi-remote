@@ -1,0 +1,11 @@
+node_modules/
+*.log
+
+# Android
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/

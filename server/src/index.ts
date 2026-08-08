@@ -1,0 +1,186 @@
+import { createServer } from "node:http";
+
+import { createSession, disposeAll, isRunning } from "./agent-pool.ts";
+import {
+	abortSession,
+	listModels,
+	loadedSessionState,
+	sendPrompt,
+	type SessionPatch,
+	updateSession,
+} from "./commands.ts";
+import { lanAddresses, parseArgs } from "./config.ts";
+import { HttpError, Router } from "./http.ts";
+import { API_PREFIX } from "./protocol.ts";
+import type { FullPart } from "./slim.ts";
+import { getEntryPage, getFullPart, getSessionDetail, listProjects, listSessions, setRunningProbe } from "./store.ts";
+import { attachWebSocket } from "./ws.ts";
+
+const VERSION = "0.1.0";
+
+const DEFAULT_PAGE_LIMIT = 50;
+const MAX_PAGE_LIMIT = 200;
+const FULL_PARTS = new Set<FullPart>(["text", "thinking", "image", "arguments", "output"]);
+
+function main(): void {
+	let config;
+	try {
+		config = parseArgs(process.argv.slice(2));
+	} catch (err) {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	}
+
+	// Lets the read-only layer report live state without importing the pool.
+	setRunningProbe(isRunning);
+
+	const router = new Router();
+
+	/** Cheap reachability + auth check for the client's connection setup screen. */
+	router.get(`${API_PREFIX}/ping`, () => ({ ok: true, version: VERSION }));
+
+	router.get(`${API_PREFIX}/projects`, () => listProjects());
+
+	router.get(`${API_PREFIX}/sessions`, (ctx) => {
+		const cwd = decodeCwd(ctx.query.get("cwd"));
+		return listSessions(cwd);
+	});
+
+	router.get(`${API_PREFIX}/sessions/:id`, async (ctx) => {
+		const detail = await getSessionDetail(ctx.params.id!);
+		// A loaded agent holds the authoritative model and thinking level — the
+		// file may lag it, or not exist yet for a session created moments ago.
+		const live = loadedSessionState(ctx.params.id!);
+		return live ? { ...detail, ...live } : detail;
+	});
+
+	router.get(`${API_PREFIX}/sessions/:id/entries`, (ctx) => {
+		const before = ctx.query.get("before") ?? undefined;
+		return getEntryPage(ctx.params.id!, before, parseLimit(ctx.query.get("limit")));
+	});
+
+	router.get(`${API_PREFIX}/sessions/:id/entries/:entryId/full`, (ctx) => {
+		const part = parsePart(ctx.query.get("part"));
+		const rawIndex = ctx.query.get("index");
+		const index = rawIndex === null ? undefined : Number(rawIndex);
+		if (index !== undefined && !Number.isInteger(index)) {
+			throw new HttpError(400, "index must be an integer", "bad_index");
+		}
+		return getFullPart(ctx.params.id!, ctx.params.entryId!, part, index);
+	});
+
+	router.get(`${API_PREFIX}/models`, () => listModels());
+
+	router.post(`${API_PREFIX}/sessions`, (ctx) => {
+		const body = asRecord(ctx.body);
+		const cwd = body.cwd;
+		if (typeof cwd !== "string" || !cwd.startsWith("/")) {
+			throw new HttpError(400, "cwd must be an absolute path", "bad_cwd");
+		}
+		return createSession(cwd, {
+			...(typeof body.provider === "string" ? { provider: body.provider } : {}),
+			...(typeof body.modelId === "string" ? { modelId: body.modelId } : {}),
+			...(typeof body.thinkingLevel === "string" ? { thinkingLevel: body.thinkingLevel } : {}),
+		}).then((id) => ({ id }));
+	});
+
+	router.post(`${API_PREFIX}/sessions/:id/prompt`, (ctx) => {
+		const body = asRecord(ctx.body);
+		const behavior = body.streamingBehavior;
+		if (behavior !== undefined && behavior !== "steer" && behavior !== "followUp") {
+			throw new HttpError(400, "streamingBehavior must be 'steer' or 'followUp'", "bad_streaming_behavior");
+		}
+		return sendPrompt(ctx.params.id!, body.message as string, behavior);
+	});
+
+	router.post(`${API_PREFIX}/sessions/:id/abort`, (ctx) => abortSession(ctx.params.id!));
+
+	router.patch(`${API_PREFIX}/sessions/:id`, (ctx) => {
+		const body = asRecord(ctx.body);
+		const patch: SessionPatch = {};
+		if (typeof body.provider === "string") patch.provider = body.provider;
+		if (typeof body.modelId === "string") patch.modelId = body.modelId;
+		if (typeof body.thinkingLevel === "string") patch.thinkingLevel = body.thinkingLevel;
+		if (typeof body.name === "string") patch.name = body.name;
+		return updateSession(ctx.params.id!, patch);
+	});
+
+	const server = createServer(router.listener(config.token));
+	attachWebSocket(server, config.token);
+
+	server.listen(config.port, config.host, () => {
+		printBanner(config.port, config.host, config.token);
+	});
+
+	server.on("error", (err) => {
+		console.error(`Failed to listen on ${config.host}:${config.port}:`, err.message);
+		process.exit(1);
+	});
+
+	const shutdown = (signal: string) => {
+		console.log(`\n${signal} received, shutting down.`);
+		// Dispose agents first: they hold session files open and have pending
+		// writes that should land before the process goes away.
+		void disposeAll().finally(() => server.close(() => process.exit(0)));
+		// Do not let a hung connection block exit.
+		setTimeout(() => process.exit(0), 5_000).unref();
+	};
+	process.on("SIGINT", () => shutdown("SIGINT"));
+	process.on("SIGTERM", () => shutdown("SIGTERM"));
+}
+
+/**
+ * `cwd` travels as base64url so absolute paths with slashes, spaces, or
+ * non-ASCII segments survive the query string unambiguously.
+ */
+export function decodeCwd(raw: string | null): string {
+	if (!raw) throw new HttpError(400, "Missing cwd parameter", "missing_cwd");
+	let decoded: string;
+	try {
+		decoded = Buffer.from(raw, "base64url").toString("utf8");
+	} catch {
+		throw new HttpError(400, "cwd is not valid base64url", "bad_cwd");
+	}
+	if (!decoded.startsWith("/")) throw new HttpError(400, "cwd must be an absolute path", "bad_cwd");
+	return decoded;
+}
+
+function asRecord(body: unknown): Record<string, unknown> {
+	if (typeof body !== "object" || body === null || Array.isArray(body)) {
+		throw new HttpError(400, "Body must be a JSON object", "bad_body");
+	}
+	return body as Record<string, unknown>;
+}
+
+function parseLimit(raw: string | null): number {
+	if (raw === null) return DEFAULT_PAGE_LIMIT;
+	const value = Number(raw);
+	if (!Number.isInteger(value) || value < 1) {
+		throw new HttpError(400, "limit must be a positive integer", "bad_limit");
+	}
+	return Math.min(value, MAX_PAGE_LIMIT);
+}
+
+function parsePart(raw: string | null): FullPart {
+	if (raw === null) throw new HttpError(400, "Missing part parameter", "missing_part");
+	if (!FULL_PARTS.has(raw as FullPart)) {
+		throw new HttpError(400, `part must be one of ${[...FULL_PARTS].join(", ")}`, "bad_part");
+	}
+	return raw as FullPart;
+}
+
+function printBanner(port: number, host: string, token: string): void {
+	const shown = host === "0.0.0.0" || host === "::" ? (lanAddresses()[0] ?? "127.0.0.1") : host;
+	console.log(`pi-remote-server ${VERSION}`);
+	console.log(`  URL:   http://${shown}:${port}`);
+	console.log(`  Token: ${token}`);
+	if (host === "0.0.0.0" || host === "::") {
+		const others = lanAddresses().slice(1);
+		if (others.length > 0) {
+			console.log(`  Also reachable at: ${others.map((a) => `http://${a}:${port}`).join(", ")}`);
+		}
+		console.log("  Listening on all interfaces — only use this on a trusted network.");
+	}
+}
+
+main();
