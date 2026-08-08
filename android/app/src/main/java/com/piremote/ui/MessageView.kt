@@ -310,7 +310,7 @@ private fun ToolCallRow(call: ToolCall, expanded: Map<String, String>, onExpand:
         }
 
         if (open) {
-            Column(Modifier.padding(start = 12.dp, end = 8.dp, bottom = 8.dp)) {
+            Column(Modifier.padding(horizontal = 8.dp).padding(bottom = 8.dp)) {
                 val diff = call.diff
                 if (diff != null) {
                     EditDiffView(diff)
