@@ -30,6 +30,8 @@ data class ChatState(
     val error: String? = null,
     /** Set when the agent is busy and the user must pick steer vs followUp. */
     val busyPrompt: BusyPrompt? = null,
+    /** True while the model is deriving a session title. */
+    val generatingTitle: Boolean = false,
     /** Expanded originals, keyed by "entryId:part:index". */
     val expanded: Map<String, String> = emptyMap(),
 )
@@ -282,13 +284,15 @@ class SessionStore(
      * conversation; [onDone] receives `(title, error)` — one of them null.
      */
     fun generateTitle(onDone: (String?, String?) -> Unit) {
+        _state.update { it.copy(generatingTitle = true) }
         scope.launch {
             try {
                 val title = client.generateTitle(sessionId)
                 val detail = client.sessionDetail(sessionId)
-                _state.update { it.copy(detail = detail) }
+                _state.update { it.copy(detail = detail, generatingTitle = false) }
                 onDone(title, null)
             } catch (e: Exception) {
+                _state.update { it.copy(generatingTitle = false) }
                 onDone(null, e.message ?: "生成标题失败")
             }
         }

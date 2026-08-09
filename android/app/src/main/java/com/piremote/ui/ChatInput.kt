@@ -8,14 +8,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,8 +34,6 @@ import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -48,18 +51,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.PopupProperties
+
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -91,6 +100,7 @@ fun ChatInput(
     onPickThinking: (() -> Unit)?,
     onNewSession: () -> Unit,
     onGenerateTitle: () -> Unit,
+    generatingTitle: Boolean = false,
     onSendImage: (List<android.net.Uri>) -> Unit,
     attachments: List<PromptImage>,
     onRemoveAttachment: (Int) -> Unit,
@@ -101,19 +111,50 @@ fun ChatInput(
     // and re-entering the chat screen.
     val text by draft.collectAsStateWithLifecycle()
 
-    // The "更多" menu: model and thinking level live here now.
-    var moreOpen by remember { mutableStateOf(false) }
+    // The "更多" panel (WeChat-style): tapping + swaps the keyboard for a
+    // grid of actions at exactly the IME height, so nothing jumps.
+    var panelOpen by remember { mutableStateOf(false) }
 
-    // Back closes the menu first, not the whole screen. The menu popup itself
-    // is non-focusable, so opening it never steals focus from the text field.
-    BackHandler(enabled = moreOpen) { moreOpen = false }
+    // Freeze the last keyboard height: while the panel is open the keyboard is
+    // hidden, but the panel takes its place 1:1 (no jitter on toggle). Only
+    // grow the capture — the hide animation would otherwise shrink it to 0.
+    val density = LocalDensity.current
+    val imePx = WindowInsets.ime.getBottom(density)
+    var panelHeightPx by remember { mutableStateOf(0) }
+    LaunchedEffect(imePx) {
+        if (imePx > panelHeightPx) panelHeightPx = imePx
+    }
+
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    fun setIme(show: Boolean) {
+        if (show) {
+            // Hiding the keyboard earlier cleared the field's focus; show()
+            // needs it back to actually raise the IME.
+            focusRequester.requestFocus()
+            keyboard?.show()
+        } else {
+            keyboard?.hide()
+        }
+    }
+    val togglePanel = {
+        panelOpen = !panelOpen
+        setIme(!panelOpen)
+    }
+    val closePanel = { panelOpen = false }
+
+    // Back closes the panel first, then the screen.
+    BackHandler(enabled = panelOpen) {
+        panelOpen = false
+        setIme(true)
+    }
 
     // System photo picker, multi-select: no storage permission needed, returns
     // readable Uris. Cap keeps the combined base64 within the server body limit.
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACHMENTS),
     ) { uris ->
-        moreOpen = false
+        panelOpen = false
         if (uris.isNotEmpty()) onSendImage(uris)
     }
 
@@ -121,19 +162,23 @@ fun ChatInput(
     val submit = {
         val toSend = text.trim()
         if (toSend.isNotEmpty() || attachments.isNotEmpty()) {
+            panelOpen = false
             onSend(toSend)
             onTextChange("")
         }
     }
 
     // enableEdgeToEdge draws behind the system bars, so the composer has to
-    // step around the navigation bar and lift for the keyboard itself.
+    // step around the navigation bar. `imePadding` applies only while the
+    // keyboard is up: with the panel open the keyboard is hidden and the panel
+    // itself occupies exactly the keyboard's height, so the composer never
+    // moves when swapping the two.
     Column(
         modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .navigationBarsPadding()
-            .imePadding(),
+            .then(if (!panelOpen) Modifier.imePadding() else Modifier),
     ) {
         if (queued.isNotEmpty()) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
@@ -181,6 +226,7 @@ fun ChatInput(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(max = 160.dp)
+                    .focusRequester(focusRequester)
                     // Enter sends; Shift+Enter inserts a newline. KeyDown is
                     // swallowed so the newline never lands in the draft.
                     .onPreviewKeyEvent { event ->
@@ -201,67 +247,14 @@ fun ChatInput(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { submit() }),
                 leadingIcon = {
-                    Box {
-                        IconButton(onClick = { moreOpen = true }) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = "更多",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = moreOpen,
-                            onDismissRequest = { moreOpen = false },
-                            // focusable = false: opening the menu must not take
-                            // focus away from the input — the keyboard stays up
-                            // and the field keeps its current activation state.
-                            properties = PopupProperties(focusable = false),
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("切换模型") },
-                                leadingIcon = { Icon(Icons.Outlined.SmartToy, contentDescription = null) },
-                                onClick = {
-                                    moreOpen = false
-                                    onPickModel()
-                                },
-                            )
-                            onPickThinking?.let { pick ->
-                                DropdownMenuItem(
-                                    text = { Text("思考等级") },
-                                    leadingIcon = { Icon(Icons.Outlined.Psychology, contentDescription = null) },
-                                    onClick = {
-                                        moreOpen = false
-                                        pick()
-                                    },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("新建会话") },
-                                leadingIcon = { Icon(Icons.Outlined.NoteAdd, contentDescription = null) },
-                                onClick = {
-                                    moreOpen = false
-                                    onNewSession()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("生成标题") },
-                                leadingIcon = { Icon(Icons.Outlined.Title, contentDescription = null) },
-                                onClick = {
-                                    moreOpen = false
-                                    onGenerateTitle()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("发送图片") },
-                                leadingIcon = { Icon(Icons.Outlined.Image, contentDescription = null) },
-                                onClick = {
-                                    moreOpen = false
-                                    pickImages.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                                    )
-                                },
-                            )
-                        }
+                    // Tapping + swaps the keyboard for the action panel;
+                    // tapping again brings the keyboard back.
+                    IconButton(onClick = togglePanel) {
+                        Icon(
+                            if (panelOpen) Icons.Default.Close else Icons.Default.Add,
+                            contentDescription = "更多",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
                 trailingIcon = {
@@ -302,6 +295,106 @@ fun ChatInput(
                     }
                 },
             )
+        }
+
+        // WeChat-style action panel: occupies exactly the keyboard height, so
+        // swapping keyboard <-> panel never moves the composer.
+        if (panelOpen) {
+            val panelHeight =
+                if (panelHeightPx > 100) panelHeightPx else with(density) { 300.dp.toPx() }.toInt()
+            MorePanel(
+                generatingTitle = generatingTitle,
+                onPickModel = onPickModel,
+                onPickThinking = onPickThinking,
+                onNewSession = {
+                    panelOpen = false
+                    setIme(true)
+                    onNewSession()
+                },
+                onGenerateTitle = onGenerateTitle,
+                onPickImages = {
+                    pickImages.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().height(with(density) { panelHeight.toDp() }),
+            )
+        }
+    }
+}
+
+/** WeChat-style grid of actions: icon cells with labels, 4 per row. */
+@Composable
+private fun MorePanel(
+    generatingTitle: Boolean,
+    onPickModel: () -> Unit,
+    onPickThinking: (() -> Unit)?,
+    onNewSession: () -> Unit,
+    onGenerateTitle: () -> Unit,
+    onPickImages: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    data class Cell(val label: String, val icon: ImageVector, val action: () -> Unit)
+
+    val cells = buildList {
+        add(Cell("切换模型", Icons.Outlined.SmartToy, onPickModel))
+        onPickThinking?.let { add(Cell("思考等级", Icons.Outlined.Psychology, it)) }
+        add(Cell("新建会话", Icons.Outlined.NoteAdd, onNewSession))
+        add(
+            Cell(
+                if (generatingTitle) "生成中…" else "生成标题",
+                Icons.Outlined.Title,
+                { if (!generatingTitle) onGenerateTitle() },
+            ),
+        )
+        add(Cell("发送图片", Icons.Outlined.Image, onPickImages))
+    }
+
+    Column(
+        modifier
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        cells.chunked(4).forEach { rowCells ->
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Top,
+            ) {
+                rowCells.forEach { cell ->
+                    Column(
+                        Modifier.clickable(enabled = cell.label != "生成中…") { cell.action() },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(14.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (cell.label == "生成中…") {
+                                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    cell.icon,
+                                    contentDescription = cell.label,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        Text(
+                            cell.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

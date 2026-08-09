@@ -221,6 +221,7 @@ fun ChatScreen(
                             }
                         }
                     },
+                    generatingTitle = state.generatingTitle,
                     onSendImage = { uris ->
                         // 方案 A：先挂到附件预览条，配文字后一起发送。
                         scope.launch {
