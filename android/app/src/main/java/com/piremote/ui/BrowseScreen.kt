@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -306,7 +307,10 @@ private fun SwipeRevealAction(
                 Modifier
                     .width(actionWidth)
                     .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.error)
+                    // Fixed red, not colorScheme.error: dynamic color schemes
+                    // derive "error" from the wallpaper (monochrome palettes
+                    // make it a near-invisible light gray).
+                    .background(Color(0xFFE53935))
                     .clickable {
                         scope.launch { offsetX.animateTo(0f, tween(150)) }
                         onAction()
@@ -316,7 +320,7 @@ private fun SwipeRevealAction(
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = "删除",
-                    tint = MaterialTheme.colorScheme.onError,
+                    tint = Color.White,
                 )
             }
         }
@@ -327,8 +331,11 @@ private fun SwipeRevealAction(
         Box(
             Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
                 .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                // Opaque so the action underneath stays hidden until the row is
+                // dragged aside. Must be INSIDE the offset, or the background
+                // stays put and covers the revealed action.
+                .background(MaterialTheme.colorScheme.background)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { scope.launch { offsetX.stop() } },
