@@ -1,20 +1,47 @@
-# Pi Remote
+# Pi Remote 📱💻
 
-用手机 / 平板远程控制局域网内 PC 上的 pi coding agent。
+> **Drive your local [pi](https://github.com/nicedoc/pi) coding agent from your phone — anywhere on the LAN.**
 
-Android 原生 app（Kotlin + Jetpack Compose）+ PC 端 Node 桥接服务。
+A native **Android app (Kotlin + Jetpack Compose)** that talks to a featherweight **Node.js bridge** on your PC. Browse every session, watch the agent work in real time, and steer it — all from the couch.
 
-## 跑起来
+<p align="center">
+  <img src="screenshots/chat.png" alt="Live chat with streaming response, thinking blocks and tool calls" width="220" />
+  <img src="screenshots/projects.png" alt="Projects browser grouped by working directory" width="220" />
+  <img src="screenshots/sessions.png" alt="Session list with previews and timestamps" width="220" />
+</p>
 
-**PC 端**
+<p align="center"><em>Connect once → browse everything → chat live. Your agent, in your pocket.</em></p>
+
+---
+
+## ✨ Features
+
+| | |
+|---|---|
+| 📂 **Projects & Sessions** | Every session on your PC, grouped by working directory — open any one and read its full history instantly |
+| ⚡ **Zero-cost browsing** | History is read straight from disk (JSONL). Switching sessions is instant — no agent is spawned just to look |
+| 💬 **Live chat** | Streaming responses, thinking blocks, tool calls with **live output**, and per-round token usage |
+| ⏹️ **Interrupt & queue** | Stop a running agent with one tap — or send a follow-up that queues politely behind it (`steer` / `followUp`) |
+| 🆕 **Per-session model** | Each session picks its own model & thinking level independently, switchable mid-flight |
+| 🖼️ **Image attachments** | Attach screenshots or photos to a prompt, preview the strip, and zoom into full-size results |
+| 🌿 **Git at a glance** | Uncommitted changes and commit history with per-file / per-commit diffs, rendered as adaptive tables |
+| 🔔 **Background agent** | Leave the app while the agent grinds — a completion notification taps you straight back into the session |
+| 👥 **Multi-device live sync** | Several phones can watch the same session; new messages appear on every screen in real time |
+| 🌙 **Dark Material 3** | A polished dark-first UI, single-column on phones |
+
+---
+
+## 🚀 Quick Start
+
+### 1 · PC server (one command)
 
 ```bash
 cd server
 npm install
-npm start          # 监听 0.0.0.0:30150
+npm start        # listens on 0.0.0.0:30150
 ```
 
-启动时会打印地址和 token：
+First launch prints the connection info and auto-generates a token:
 
 ```
 pi-remote-server 0.1.0
@@ -23,48 +50,66 @@ pi-remote-server 0.1.0
   Listening on all interfaces — only use this on a trusted network.
 ```
 
-Token 存在 `~/.pi/remote/token`，首次启动自动生成。
+The token lives at `~/.pi/remote/token` (mode `600`) and survives restarts.
 
-**手机端**
+### 2 · Android app
 
 ```bash
 cd android
-./gradlew installDebug        # 装到已连接的设备
+./gradlew installDebug        # installs on a connected device
 ```
 
-APK 产物在 `android/app/build/outputs/apk/debug/app-debug.apk`，也可以直接拷到手机安装。
+Or side-load the ready-made APK at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-首次打开填地址和 token（地址可以只写 `192.168.31.117`，端口会自动补 30150）。点「连接」会先验证再保存。
+**First launch:** enter the server address and token, tap **Connect**. The app verifies the connection before saving, so typos are caught immediately.
 
-> 构建需要 JDK 17。本机的在 `~/tools/jdk-17.0.20+8`，已写在 `android/gradle.properties`
-> 的 `org.gradle.java.home`。换机器改那一行。
+> **Build note:** Requires JDK 17 — configure `org.gradle.java.home` in `android/gradle.properties` if needed.
 
-## 能做什么
+---
 
-- 按工作目录浏览会话，打开任意一个看完整历史
-- 发消息、看流式回复、看工具调用和输出、随时中止
-- 新建会话；每个会话独立切换模型和思考等级
-- agent 在跑的时候可以切后台，跑完收通知
-- 手机单栏、平板双栏
-- 手机和平板可以同时连，一端发的消息另一端实时看到
+## 📸 Screenshots
 
-MVP 不含：图片附件、扩展弹框转发、文件浏览 / git diff、fork 与分支导航、手动 compact、
-mDNS 自动发现、公网访问。
+| | |
+|---|---|
+| <img src="screenshots/chat.png" alt="Chat" width="220" /> | **Live chat** — streaming response, thinking block, bash tool call with live output, token usage per round |
+| <img src="screenshots/projects.png" alt="Projects" width="220" /> | **Projects browser** — sessions grouped by working directory with counts & last activity |
+| <img src="screenshots/sessions.png" alt="Sessions" width="220" /> | **Session list** — preview, message count, and relative time for every session |
+| <img src="screenshots/connect.png" alt="Connect" width="220" /> | **One-time setup** — address + token, verified before saving |
 
-## 结构
+---
+
+## 🏗 Architecture
 
 ```
-server/     Node + TypeScript 桥接服务   见 server/AGENTS.md
-android/    Kotlin + Compose             见 android/AGENTS.md
-plan.md     设计与取舍
+server/     Node + TypeScript bridge service   →  server/AGENTS.md
+android/    Kotlin + Compose app               →  android/AGENTS.md
+plan.md     Design decisions & tradeoffs
 ```
 
-两份 `AGENTS.md` 记了实测数据和踩过的坑，改代码前值得先看。
+> Both `AGENTS.md` files document real-world data and pitfalls encountered during development — **read them before touching the code.**
 
-## 架构一句话
+### The one-liner
 
-**浏览走文件、执行才起 agent。** 会话列表和历史直接读 `~/.pi/agent/sessions/` 下的 JSONL，
-不创建 AgentSession，所以切换会话没有任何启动开销；只有真正发消息时才为该会话创建 agent，
-空闲 10 分钟回收。
+**Browsing is file-based. Execution spins up an agent on demand.**
 
-pi 本身没有任何网络能力（只有 stdin/stdout 的 RPC 模式和 Node SDK），所以 PC 端这个服务是必需的。
+Session lists and history are read directly from `~/.pi/agent/sessions/` JSONL files — no `AgentSession` is created just to browse, so switching sessions has **zero startup cost**. An agent is only instantiated when you actually send a message, and it's recycled after 10 minutes of idle time.
+
+Since pi itself has no network capability (only stdin/stdout RPC and a Node SDK), the PC-side bridge service is essential.
+
+---
+
+## 🗺️ Roadmap
+
+Ideas beyond the current scope:
+
+- [ ] Extension dialog forwarding
+- [ ] Fork & branch (tree) navigation
+- [ ] Manual compact
+- [ ] mDNS auto-discovery
+- [ ] Remote / WAN access
+
+---
+
+## 📄 License
+
+MIT
