@@ -157,6 +157,10 @@ fun ChatInput(
                 panelClosing = false
             }
         } else {
+            // Capture the keyboard's CURRENT height before hiding it, so the
+            // panel matches whatever IME height the user configured — not a
+            // stale max from an earlier, taller keyboard.
+            panelHeightPx = imePx
             panelOpen = true
             panelClosing = false
             setIme(false)
