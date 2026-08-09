@@ -25,8 +25,9 @@ fun BusyChoiceDialog(
         onDismissRequest = onDismiss,
         title = { Text("会话正在运行") },
         text = {
+            val shown = message.ifBlank { "［图片］" }
             Text(
-                "「$message」\n\n插队会在当前这一轮的工具调用结束后立刻送达；排队则等整轮跑完再送。",
+                "「$shown」\n\n插队会在当前这一轮的工具调用结束后立刻送达；排队则等整轮跑完再送。",
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis,

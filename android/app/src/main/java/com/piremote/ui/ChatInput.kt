@@ -1,6 +1,9 @@
 package com.piremote.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,15 +12,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.SmartToy
@@ -34,11 +41,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -49,8 +60,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import com.piremote.net.PromptImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 
 /**
  * The composer.
@@ -70,6 +89,9 @@ fun ChatInput(
     onPickModel: () -> Unit,
     onPickThinking: (() -> Unit)?,
     onNewSession: () -> Unit,
+    onSendImage: (android.net.Uri) -> Unit,
+    attachments: List<PromptImage>,
+    onRemoveAttachment: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Collected here, not in ChatScreen: typing recomposes only the composer,
@@ -84,10 +106,18 @@ fun ChatInput(
     // is non-focusable, so opening it never steals focus from the text field.
     BackHandler(enabled = moreOpen) { moreOpen = false }
 
+    // System photo picker: no storage permission needed, returns a readable Uri.
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        moreOpen = false
+        uri?.let(onSendImage)
+    }
+
     // Shared by the send button and the Enter key: trim, send, clear.
     val submit = {
         val toSend = text.trim()
-        if (toSend.isNotEmpty()) {
+        if (toSend.isNotEmpty() || attachments.isNotEmpty()) {
             onSend(toSend)
             onTextChange("")
         }
@@ -117,6 +147,22 @@ fun ChatInput(
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(horizontal = 6.dp, vertical = 3.dp),
                     )
+                }
+            }
+        }
+
+        // 附件预览条：选中的图片先挂在这里，配上文字一起发送。
+        if (attachments.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                attachments.forEachIndexed { index, image ->
+                    AttachmentThumb(image = image, onRemove = { onRemoveAttachment(index) })
                 }
             }
         }
@@ -194,6 +240,16 @@ fun ChatInput(
                                     onNewSession()
                                 },
                             )
+                            DropdownMenuItem(
+                                text = { Text("发送图片") },
+                                leadingIcon = { Icon(Icons.Outlined.Image, contentDescription = null) },
+                                onClick = {
+                                    moreOpen = false
+                                    pickImage.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                    )
+                                },
+                            )
                         }
                     }
                 },
@@ -214,7 +270,7 @@ fun ChatInput(
                             )
                         }
                     } else {
-                        val canSend = text.isNotBlank()
+                        val canSend = text.isNotBlank() || attachments.isNotEmpty()
                         FilledIconButton(
                             onClick = submit,
                             enabled = canSend,
@@ -331,3 +387,58 @@ fun StreamingBubble(
  * rendering all of it would stall the frame it arrives on.
  */
 private const val LIVE_OUTPUT_TAIL = 2000
+
+/** One picked image in the composer's attachment bar, with a remove button. */
+@Composable
+private fun AttachmentThumb(image: PromptImage, onRemove: () -> Unit) {
+    Box {
+        val bitmap by produceState<Bitmap?>(initialValue = null, image.data) {
+            // produceState runs on the composition's (main) dispatcher; decode
+            // a large base64 payload off the frame.
+            value = withContext(Dispatchers.Default) {
+                runCatching {
+                    val bytes = android.util.Base64.decode(image.data, android.util.Base64.NO_WRAP)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                }.getOrNull()
+            }
+        }
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = "附件图片",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+            )
+        } else {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        }
+        // Small circular ✕ half-hanging off the thumbnail's top-right corner.
+        // Plain Box+clickable: IconButton's 48dp minimum touch target would
+        // overlap the image and look like a dark blob on it.
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 8.dp, y = (-8).dp)
+                .size(16.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.55f))
+                .clickable(onClick = onRemove),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "移除附件",
+                tint = Color.White,
+                modifier = Modifier.size(10.dp),
+            )
+        }
+    }
+}

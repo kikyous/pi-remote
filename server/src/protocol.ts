@@ -166,6 +166,14 @@ export interface PromptResultDto {
 	queued: boolean;
 }
 
+/** An image attachment for a prompt, base64-encoded on the wire. */
+export interface PromptImageDto {
+	type: "image";
+	/** base64-encoded image bytes. */
+	data: string;
+	mimeType: string;
+}
+
 /**
  * How a client should decide a prompt is "done".
  *

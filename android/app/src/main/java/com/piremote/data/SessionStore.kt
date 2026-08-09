@@ -2,6 +2,7 @@ package com.piremote.data
 
 import com.piremote.net.ApiException
 import com.piremote.net.PiRemoteClient
+import com.piremote.net.PromptImage
 import com.piremote.net.SessionDetailDto
 import com.piremote.net.WsMessage
 import kotlinx.coroutines.CoroutineScope
@@ -28,10 +29,13 @@ data class ChatState(
     val hasMore: Boolean = false,
     val error: String? = null,
     /** Set when the agent is busy and the user must pick steer vs followUp. */
-    val busyPrompt: String? = null,
+    val busyPrompt: BusyPrompt? = null,
     /** Expanded originals, keyed by "entryId:part:index". */
     val expanded: Map<String, String> = emptyMap(),
 )
+
+/** A message that hit a busy agent; the choice dialog retries with these. */
+data class BusyPrompt(val text: String, val images: List<PromptImage>? = null)
 
 /**
  * One session's chat state.
@@ -65,6 +69,25 @@ class SessionStore(
 
     fun setDraft(text: String) {
         _draft.value = text
+    }
+
+    /**
+     * Attachments picked for the next send (方案 A: preview bar above the
+     * composer). Survives navigation like the draft; cleared once sent.
+     */
+    private val _attachments = MutableStateFlow<List<PromptImage>>(emptyList())
+    val attachments: StateFlow<List<PromptImage>> = _attachments.asStateFlow()
+
+    fun addAttachment(image: PromptImage) {
+        _attachments.value = _attachments.value + image
+    }
+
+    fun removeAttachment(index: Int) {
+        _attachments.value = _attachments.value.filterIndexed { i, _ -> i != index }
+    }
+
+    fun clearAttachments() {
+        _attachments.value = emptyList()
     }
 
     private val epoch = AtomicLong(0)
@@ -185,17 +208,21 @@ class SessionStore(
      *   the server answers 409 and [ChatState.busyPrompt] is set, which the UI
      *   turns into a steer/queue choice; the retry then passes the choice here.
      */
-    fun send(text: String, behavior: String? = null) {
-        if (text.isBlank()) return
+    fun send(text: String, behavior: String? = null, images: List<PromptImage>? = null) {
+        // Attachments picked in the composer are carried by default; an explicit
+        // `images` argument (busy-retry etc.) overrides them.
+        val effectiveImages = images ?: _attachments.value.takeIf { it.isNotEmpty() }
+        if (text.isBlank() && effectiveImages.isNullOrEmpty()) return
         scope.launch {
             try {
-                client.prompt(sessionId, text, behavior)
+                client.prompt(sessionId, text, behavior, effectiveImages)
+                _attachments.value = emptyList()
                 _state.update { it.copy(busyPrompt = null) }
                 // The user's own message arrives back as an entry_appended event,
                 // so nothing is inserted locally — one source of truth.
             } catch (e: ApiException) {
                 if (e.isBusy) {
-                    _state.update { it.copy(busyPrompt = text) }
+                    _state.update { it.copy(busyPrompt = BusyPrompt(text, effectiveImages)) }
                 } else {
                     _state.update { it.copy(error = e.readable()) }
                 }

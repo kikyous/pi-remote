@@ -13,7 +13,7 @@ import {
 import { lanAddresses, parseArgs } from "./config.ts";
 import { gitCommitDiff, gitCommits, gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
-import { API_PREFIX } from "./protocol.ts";
+import { API_PREFIX, type PromptImageDto } from "./protocol.ts";
 import type { FullPart } from "./slim.ts";
 import { getEntryPage, getFullPart, getSessionDetail, listProjects, listSessions, setRunningProbe } from "./store.ts";
 import { attachWebSocket } from "./ws.ts";
@@ -110,7 +110,8 @@ function main(): void {
 		if (behavior !== undefined && behavior !== "steer" && behavior !== "followUp") {
 			throw new HttpError(400, "streamingBehavior must be 'steer' or 'followUp'", "bad_streaming_behavior");
 		}
-		return sendPrompt(ctx.params.id!, body.message as string, behavior);
+		const images = parseImages(body.images);
+		return sendPrompt(ctx.params.id!, body.message as string, behavior, images);
 	});
 
 	router.post(`${API_PREFIX}/sessions/:id/abort`, (ctx) => abortSession(ctx.params.id!));
@@ -176,6 +177,26 @@ function asRecord(body: unknown): Record<string, unknown> {
 		throw new HttpError(400, "Body must be a JSON object", "bad_body");
 	}
 	return body as Record<string, unknown>;
+}
+
+/**
+ * Accept an optional `images` array of `{type:"image", data, mimeType}`.
+ * Rejects anything that does not look like a base64 image so a malformed
+ * client payload cannot reach the model API.
+ */
+function parseImages(raw: unknown): PromptImageDto[] | undefined {
+	if (raw === undefined) return undefined;
+	if (!Array.isArray(raw)) throw new HttpError(400, "images must be an array", "bad_images");
+	const images: PromptImageDto[] = [];
+	for (const item of raw) {
+		if (typeof item !== "object" || item === null) throw new HttpError(400, "image must be an object", "bad_images");
+		const rec = item as Record<string, unknown>;
+		if (rec.type !== "image" || typeof rec.data !== "string" || typeof rec.mimeType !== "string") {
+			throw new HttpError(400, "image needs type/data/mimeType", "bad_images");
+		}
+		images.push({ type: "image", data: rec.data, mimeType: rec.mimeType });
+	}
+	return images;
 }
 
 function parseLimit(raw: string | null): number {

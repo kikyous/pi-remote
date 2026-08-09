@@ -17,7 +17,12 @@ import kotlinx.serialization.json.intOrNull
 sealed interface ChatItem {
     val entryId: String
 
-    data class User(override val entryId: String, val text: String) : ChatItem
+    data class User(
+        override val entryId: String,
+        val text: String,
+        /** First attached image, fetchable via the truncation mechanism. */
+        val image: Truncation? = null,
+    ) : ChatItem
 
     data class Assistant(
         override val entryId: String,
@@ -151,7 +156,15 @@ fun parseEntry(entry: JsonObject): ChatItem? {
 
 private fun parseMessage(entryId: String, message: JsonObject): ChatItem? =
     when (message.str("role")) {
-        "user" -> ChatItem.User(entryId, message.contentText())
+        "user" -> {
+            val blocks = message["content"] as? JsonArray
+            val image = blocks?.firstNotNullOfOrNull { block ->
+                (block as? JsonObject)
+                    ?.takeIf { it.str("type") == "image" }
+                    ?.truncation(entryId)
+            }
+            ChatItem.User(entryId, message.contentText(), image)
+        }
         "assistant" -> parseAssistant(entryId, message)
         "toolResult" -> ChatItem.OrphanToolResult(entryId, parseToolResult(entryId, message))
         "bashExecution" -> ChatItem.Bash(

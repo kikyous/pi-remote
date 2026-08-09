@@ -1,34 +1,49 @@
 package com.piremote.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +51,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
@@ -45,6 +64,8 @@ import com.piremote.data.ToolCall
 import com.piremote.data.ToolResult
 import com.piremote.data.Truncation
 import com.piremote.data.key
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Renders one chat item.
@@ -60,7 +81,7 @@ fun MessageView(
     modifier: Modifier = Modifier,
 ) {
     when (item) {
-        is ChatItem.User -> UserBlock(item, modifier)
+        is ChatItem.User -> UserBlock(item, expanded, onExpand, modifier)
         is ChatItem.Assistant -> AssistantBlock(item, expanded, onExpand, modifier)
         is ChatItem.OrphanToolResult -> ToolResultBlock(item.result, expanded, onExpand, modifier)
         is ChatItem.Bash -> BashBlock(item, expanded, onExpand, modifier)
@@ -69,16 +90,68 @@ fun MessageView(
 }
 
 @Composable
-private fun UserBlock(item: ChatItem.User, modifier: Modifier) {
-    Row(modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.End) {
-        Box(
+private fun UserBlock(
+    item: ChatItem.User,
+    expanded: Map<String, String>,
+    onExpand: (Truncation) -> Unit,
+    modifier: Modifier,
+) {
+    // Fetch the stripped image payload as soon as the message is on screen.
+    val image = item.image
+    LaunchedEffect(image?.key()) {
+        if (image != null && !expanded.containsKey(image.key())) onExpand(image)
+    }
+
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Column(
             Modifier
                 .widthIn(max = 320.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.primaryContainer)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.End,
         ) {
-            Text(item.text, color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.bodyMedium)
+            if (item.text.isNotBlank()) {
+                Text(
+                    item.text,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            image?.let { img ->
+                val base64 = expanded[img.key()]
+                // Decode off the frame: produceState runs on the main dispatcher.
+                val bitmap by produceState<Bitmap?>(initialValue = null, base64) {
+                    value = withContext(Dispatchers.Default) {
+                        base64?.let { runCatching { decodeBase64Bitmap(it) }.getOrNull() }
+                    }
+                }
+                val bmp = bitmap
+                var fullscreen by remember { mutableStateOf(false) }
+                when {
+                    bmp != null -> {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "图片",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = if (item.text.isNotBlank()) 6.dp else 0.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { fullscreen = true },
+                        )
+                        if (fullscreen) {
+                            ZoomableImageDialog(bitmap = bmp, onDismiss = { fullscreen = false })
+                        }
+                    }
+                    base64 == null -> CircularProgressIndicator(
+                        Modifier.padding(top = 6.dp).size(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
         }
     }
 }
@@ -428,6 +501,79 @@ private fun NoticeBlock(item: ChatItem.Notice, modifier: Modifier) {
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         HorizontalDivider(Modifier.weight(1f))
+    }
+}
+
+private fun decodeBase64Bitmap(base64: String): Bitmap? = runCatching {
+    val bytes = android.util.Base64.decode(base64, android.util.Base64.NO_WRAP)
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+}.getOrNull()
+
+/**
+ * Fullscreen image with pinch-zoom, pan, double-tap to toggle zoom, and a
+ * tap on the backdrop (or Back) to close.
+ */
+@Composable
+private fun ZoomableImageDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
+    // BackHandler from the activity-compose dependency already powers system
+    // back in this app; the dialog also exposes an explicit close button.
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var panEnabled by remember { mutableStateOf(false) }
+    val transformState = rememberTransformableState { zoom, pan, _ ->
+        scale = (scale * zoom).coerceIn(1f, 6f)
+        offset += pan
+        panEnabled = scale > 1f
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.92f))
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { if (!panEnabled) onDismiss() },
+                        onDoubleTap = { tap ->
+                            if (scale > 1f) {
+                                scale = 1f
+                                offset = Offset.Zero
+                                panEnabled = false
+                            } else {
+                                scale = 2.5f
+                                panEnabled = true
+                            }
+                        },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+                    .transformable(transformState),
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "关闭",
+                    tint = Color.White,
+                )
+            }
+        }
     }
 }
 

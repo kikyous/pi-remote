@@ -164,6 +164,9 @@ data class ModelsResponseDto(val models: List<ModelDto> = emptyList())
 @Serializable
 data class PromptResultDto(val accepted: Boolean = false, val queued: Boolean = false)
 
+/** An image attachment for a prompt: base64 bytes plus MIME type. */
+data class PromptImage(val data: String, val mimeType: String)
+
 @Serializable
 data class AbortResultDto(val aborted: Boolean = false)
 

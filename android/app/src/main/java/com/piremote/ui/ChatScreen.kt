@@ -34,15 +34,26 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import com.piremote.data.SessionStore
 import com.piremote.net.ModelDto
+import com.piremote.net.PromptImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -68,8 +79,11 @@ fun ChatScreen(
 ) {
     val state by store.state.collectAsStateWithLifecycle()
     val streaming by store.streaming.collectAsStateWithLifecycle()
+    val attachments by store.attachments.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // Which picker bottom sheet (model / thinking level) is open; opened from
     // the composer's "更多" menu.
@@ -200,15 +214,28 @@ fun ChatScreen(
                         { sheet = SessionSheet.Thinking }
                     } else null,
                     onNewSession = onNewSession,
+                    onSendImage = { uri ->
+                        // 方案 A：先挂到附件预览条，配文字后一起发送。
+                        scope.launch {
+                            val image = loadPromptImage(context, uri)
+                            if (image != null) {
+                                store.addAttachment(image)
+                            } else {
+                                snackbar.showSnackbar("读取图片失败")
+                            }
+                        }
+                    },
+                    attachments = attachments,
+                    onRemoveAttachment = store::removeAttachment,
                 )
             }
         },
     ) { padding ->
         state.busyPrompt?.let { pending ->
             BusyChoiceDialog(
-                message = pending,
-                onSteer = { store.send(pending, "steer") },
-                onQueue = { store.send(pending, "followUp") },
+                message = pending.text,
+                onSteer = { store.send(pending.text, "steer", pending.images) },
+                onQueue = { store.send(pending.text, "followUp", pending.images) },
                 onDismiss = store::dismissBusyPrompt,
             )
         }
@@ -289,3 +316,62 @@ fun ChatScreen(
 
 /** How close to the loaded top to get before fetching the next page. */
 private const val PREFETCH_DISTANCE = 8
+
+/**
+ * Read a picked image and turn it into a [PromptImage].
+ *
+ * Runs off the main thread; large photos are scaled down to [MAX_IMAGE_EDGE]
+ * and re-encoded so the base64 payload stays within reason for the model API.
+ */
+private suspend fun loadPromptImage(context: Context, uri: Uri): PromptImage? =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return@withContext null
+            val bitmap = decodeScaled(bytes, MAX_IMAGE_EDGE)
+                ?: return@withContext null
+            val out = ByteArrayOutputStream()
+            val png = mime.contains("png")
+            bitmap.compress(
+                if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
+                IMAGE_QUALITY,
+                out,
+            )
+            PromptImage(
+                data = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP),
+                mimeType = if (png) "image/png" else "image/jpeg",
+            )
+        }.getOrNull()
+    }
+
+/**
+ * Decode with `inSampleSize` so a huge photo never materialises at full
+ * resolution (a 48MP shot is ~192MB of pixels) before being scaled down.
+ */
+private fun decodeScaled(bytes: ByteArray, maxEdge: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= maxEdge && bounds.outHeight / (sample * 2) >= maxEdge) {
+        sample *= 2
+    }
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+        ?: return null
+    return scaleDown(bitmap, maxEdge)
+}
+
+private fun scaleDown(bitmap: Bitmap, maxEdge: Int): Bitmap {
+    val longest = maxOf(bitmap.width, bitmap.height)
+    if (longest <= maxEdge) return bitmap
+    val scale = maxEdge.toFloat() / longest
+    return Bitmap.createScaledBitmap(
+        bitmap,
+        (bitmap.width * scale).toInt(),
+        (bitmap.height * scale).toInt(),
+        true,
+    )
+}
+
+private const val MAX_IMAGE_EDGE = 2048
+private const val IMAGE_QUALITY = 85

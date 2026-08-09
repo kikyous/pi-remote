@@ -104,10 +104,19 @@ class PiRemoteClient(
         id: String,
         message: String,
         streamingBehavior: String? = null,
-    ): PromptResultDto = post(
-        "sessions/$id/prompt",
-        buildJsonBody("message" to message, "streamingBehavior" to streamingBehavior),
-    )
+        images: List<PromptImage>? = null,
+    ): PromptResultDto {
+        // buildJsonBody quotes every value, so the images array (already JSON)
+        // must be spliced in raw — otherwise it arrives as a quoted string and
+        // the server rejects it with "images must be an array".
+        val imageJson = images?.takeIf { it.isNotEmpty() }?.let(::buildImagesJson)
+        val base = buildJsonBody(
+            "message" to message,
+            "streamingBehavior" to streamingBehavior,
+        )
+        val body = if (imageJson != null) base.dropLast(1) + ",\"images\":$imageJson}" else base
+        return post("sessions/$id/prompt", body)
+    }
 
     suspend fun abort(id: String): AbortResultDto = post("sessions/$id/abort", "{}")
 
@@ -185,6 +194,15 @@ class PiRemoteClient(
             .joinToString(",", prefix = "{", postfix = "}") { (k, v) ->
                 "${quote(k)}:${quote(v!!)}"
             }
+
+    /** `[{type:"image",data,mimeType},…]` — values escaped, quotes from the literal. */
+    private fun buildImagesJson(images: List<PromptImage>): String =
+        images.joinToString(",", prefix = "[", postfix = "]") { img ->
+            "{\"type\":\"image\",\"data\":\"${escape(img.data)}\",\"mimeType\":\"${escape(img.mimeType)}\"}"
+        }
+
+    /** Escape JSON string content without the surrounding quotes. */
+    private fun escape(value: String): String = quote(value).drop(1).dropLast(1)
 
     private fun quote(value: String): String = buildString {
         append('"')

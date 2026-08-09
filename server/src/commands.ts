@@ -6,6 +6,7 @@ import {
 	type ContextUsageDto,
 	type ModelDto,
 	type ModelsResponseDto,
+	type PromptImageDto,
 	type PromptResultDto,
 	THINKING_LEVELS,
 	type ThinkingLevel,
@@ -86,9 +87,13 @@ export async function sendPrompt(
 	sessionId: string,
 	text: string,
 	streamingBehavior: "steer" | "followUp" | undefined,
+	images: PromptImageDto[] | undefined,
 ): Promise<PromptResultDto> {
-	if (typeof text !== "string" || text.trim().length === 0) {
+	if (typeof text !== "string" || (text.trim().length === 0 && !images?.length)) {
 		throw new HttpError(400, "message must be a non-empty string", "empty_message");
+	}
+	if (images?.length && text.trim().length === 0) {
+		text = ""; // an attachment-only message is legal; pi handles the bare image
 	}
 
 	const live = await acquire(sessionId, true);
@@ -117,6 +122,7 @@ export async function sendPrompt(
 			live.session
 				.prompt(text, {
 					...(streamingBehavior ? { streamingBehavior } : {}),
+					...(images?.length ? { images } : {}),
 					preflightResult: finish,
 				})
 				.then(() => finish(true))
