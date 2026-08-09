@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
@@ -37,6 +39,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
@@ -76,6 +84,15 @@ fun ChatInput(
     // is non-focusable, so opening it never steals focus from the text field.
     BackHandler(enabled = moreOpen) { moreOpen = false }
 
+    // Shared by the send button and the Enter key: trim, send, clear.
+    val submit = {
+        val toSend = text.trim()
+        if (toSend.isNotEmpty()) {
+            onSend(toSend)
+            onTextChange("")
+        }
+    }
+
     // enableEdgeToEdge draws behind the system bars, so the composer has to
     // step around the navigation bar and lift for the keyboard itself.
     Column(
@@ -112,9 +129,28 @@ fun ChatInput(
                 value = text,
                 onValueChange = onTextChange,
                 placeholder = { Text("发消息给 pi…") },
-                modifier = Modifier.weight(1f).heightIn(max = 160.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(max = 160.dp)
+                    // Enter sends; Shift+Enter inserts a newline. KeyDown is
+                    // swallowed so the newline never lands in the draft.
+                    .onPreviewKeyEvent { event ->
+                        if (event.key != Key.Enter || event.nativeKeyEvent.isShiftPressed) {
+                            return@onPreviewKeyEvent false
+                        }
+                        when (event.type) {
+                            KeyEventType.KeyDown -> true
+                            KeyEventType.KeyUp -> {
+                                submit()
+                                true
+                            }
+                            else -> false
+                        }
+                    },
                 maxLines = 6,
                 shape = RoundedCornerShape(20.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { submit() }),
                 leadingIcon = {
                     Box {
                         IconButton(onClick = { moreOpen = true }) {
@@ -169,18 +205,18 @@ fun ChatInput(
                                 contentColor = MaterialTheme.colorScheme.error,
                             ),
                         ) {
-                            Icon(Icons.Default.Stop, contentDescription = "中止")
+                            Icon(
+                                Icons.Default.Stop,
+                                contentDescription = "中止",
+                                // A bit bigger than the default so the stop
+                                // square reads clearly at a glance.
+                                modifier = Modifier.size(32.dp),
+                            )
                         }
                     } else {
                         val canSend = text.isNotBlank()
                         FilledIconButton(
-                            onClick = {
-                                val toSend = text.trim()
-                                if (toSend.isNotEmpty()) {
-                                    onSend(toSend)
-                                    onTextChange("")
-                                }
-                            },
+                            onClick = submit,
                             enabled = canSend,
                             modifier = Modifier.size(32.dp),
                             colors = IconButtonDefaults.filledIconButtonColors(

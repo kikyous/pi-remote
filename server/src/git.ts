@@ -39,7 +39,10 @@ function runGit(cwd: string, args: string[]): Promise<string> {
 export async function gitStatus(cwd: string): Promise<GitStatusDto> {
 	const [branchRaw, porcelain, numstatRaw] = await Promise.all([
 		runGit(cwd, ["branch", "--show-current"]),
-		runGit(cwd, ["status", "--porcelain=v1", "-z"]),
+		// --untracked-files=all: an untracked directory would otherwise collapse
+		// to a single "dir/" row, which is not a diffable file. Expanding it
+		// keeps the list to files, and each entry opens a real diff.
+		runGit(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
 		// Both the staged and the unstaged diff carry line counts.
 		runGit(cwd, ["diff", "--numstat"])
 			.then((a) => a + "\n" + runGit(cwd, ["diff", "--cached", "--numstat"]))
@@ -90,6 +93,12 @@ export async function gitStatus(cwd: string): Promise<GitStatusDto> {
 
 export async function gitDiff(cwd: string, path: string): Promise<GitDiffDto> {
 	const file = validatePath(cwd, path);
+
+	// A directory has no diff; the list normally expands folders, but guard
+	// anyway so a stray "dir/" row cannot blow up readFileSync below.
+	if (existsSync(file) && statSync(file).isDirectory()) {
+		return { path, hunks: [] };
+	}
 
 	// Untracked files have no baseline: show the whole file as additions.
 	if (!(await isTracked(cwd, path))) {

@@ -62,6 +62,10 @@ data class TokenUsage(
             if (cacheRead > 0) add("${formatCount(cacheRead)} cache R")
             add(formatCost(cost))
         }.joinToString(" · ")
+
+    /** All-zero usage (failed/aborted turns) is not worth a line. */
+    val isEmpty: Boolean
+        get() = input == 0 && output == 0 && cacheRead == 0 && cost <= 0.0
 }
 
 private fun formatCount(n: Int): String = String.format("%,d", n)

@@ -147,15 +147,18 @@ private fun AssistantBlock(
         }
 
         // Per-turn token usage, pi-TUI style. Rendered outside the card,
-        // snug against it, left-aligned with the card's text.
+        // snug against it, left-aligned with the card's text. Skipped when the
+        // turn used nothing (failed/aborted runs report all-zero usage).
         item.usage?.let { usage ->
-            Text(
-                usage.summary,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                textAlign = TextAlign.End,
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 2.dp),
-            )
+            if (!usage.isEmpty) {
+                Text(
+                    usage.summary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 2.dp),
+                )
+            }
         }
     }
 }
@@ -323,7 +326,10 @@ private fun ToolCallRow(call: ToolCall, expanded: Map<String, String>, onExpand:
         }
 
         if (open) {
-            Column(Modifier.padding(horizontal = 8.dp).padding(bottom = 8.dp)) {
+            // Tight bottom: the card's own 4dp padding already clears the
+            // next item — 8dp here made the gap under the last output line
+            // look much larger than the header's top spacing.
+            Column(Modifier.padding(horizontal = 8.dp).padding(bottom = 2.dp)) {
                 val diff = call.diff
                 if (diff != null) {
                     EditDiffView(diff)
