@@ -98,6 +98,12 @@ class PiRemoteClient(
     /** One-tap daily default workspace on the server: `~/pi-cwd-YYYYMMDD`. */
     suspend fun createWorkspace(): WorkspaceDto = post("workspaces", "{}")
 
+    /** Have the model derive a title from the conversation; returns the title. */
+    suspend fun generateTitle(id: String): String {
+        val dto: TitleDto = post("sessions/$id/title", "{}")
+        return dto.title
+    }
+
     /** Delete a single session (fails with 409 if it has forked children). */
     suspend fun deleteSession(id: String): DeleteResultDto = delete("sessions/$id")
 

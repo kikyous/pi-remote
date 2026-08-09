@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -89,6 +90,7 @@ fun ChatInput(
     onPickModel: () -> Unit,
     onPickThinking: (() -> Unit)?,
     onNewSession: () -> Unit,
+    onGenerateTitle: () -> Unit,
     onSendImage: (List<android.net.Uri>) -> Unit,
     attachments: List<PromptImage>,
     onRemoveAttachment: (Int) -> Unit,
@@ -239,6 +241,14 @@ fun ChatInput(
                                 onClick = {
                                     moreOpen = false
                                     onNewSession()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("生成标题") },
+                                leadingIcon = { Icon(Icons.Outlined.Title, contentDescription = null) },
+                                onClick = {
+                                    moreOpen = false
+                                    onGenerateTitle()
                                 },
                             )
                             DropdownMenuItem(

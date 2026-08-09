@@ -21,7 +21,8 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.84.0",
     "tsx": "^4.20.6",
-    "ws": "8.18.3"
+    "ws": "8.18.3",
+    "@earendil-works/pi-agent-core": "0.84.0"
   },
   "devDependencies": {
     "@types/node": "^22",

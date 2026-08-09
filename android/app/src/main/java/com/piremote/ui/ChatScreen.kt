@@ -214,6 +214,13 @@ fun ChatScreen(
                         { sheet = SessionSheet.Thinking }
                     } else null,
                     onNewSession = onNewSession,
+                    onGenerateTitle = {
+                        store.generateTitle { title, err ->
+                            scope.launch {
+                                snackbar.showSnackbar(err ?: "已生成标题：$title")
+                            }
+                        }
+                    },
                     onSendImage = { uris ->
                         // 方案 A：先挂到附件预览条，配文字后一起发送。
                         scope.launch {

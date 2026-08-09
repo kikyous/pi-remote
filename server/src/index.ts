@@ -4,6 +4,7 @@ import { createSession, createWorkspace, disposeAll, isRunning } from "./agent-p
 import { deleteSession, deleteWorkspace } from "./delete.ts";
 import {
 	abortSession,
+	generateSessionTitle,
 	listModels,
 	loadedSessionState,
 	sendPrompt,
@@ -124,6 +125,9 @@ function main(): void {
 	});
 
 	router.post(`${API_PREFIX}/sessions/:id/abort`, (ctx) => abortSession(ctx.params.id!));
+
+	// AI-generated title from the conversation; persisted as the session name.
+	router.post(`${API_PREFIX}/sessions/:id/title`, (ctx) => generateSessionTitle(ctx.params.id!));
 
 	router.patch(`${API_PREFIX}/sessions/:id`, (ctx) => {
 		const body = asRecord(ctx.body);

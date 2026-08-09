@@ -263,6 +263,37 @@ class SessionStore(
         }
     }
 
+    /** Set a display title; [onDone] receives null on success, else an error. */
+    fun setName(name: String, onDone: (String?) -> Unit) {
+        scope.launch {
+            try {
+                client.updateSession(sessionId, name = name)
+                val detail = client.sessionDetail(sessionId)
+                _state.update { it.copy(detail = detail) }
+                onDone(null)
+            } catch (e: Exception) {
+                onDone(e.message ?: "设置标题失败")
+            }
+        }
+    }
+
+    /**
+     * Ask the server to have the model title this session from its
+     * conversation; [onDone] receives `(title, error)` — one of them null.
+     */
+    fun generateTitle(onDone: (String?, String?) -> Unit) {
+        scope.launch {
+            try {
+                val title = client.generateTitle(sessionId)
+                val detail = client.sessionDetail(sessionId)
+                _state.update { it.copy(detail = detail) }
+                onDone(title, null)
+            } catch (e: Exception) {
+                onDone(null, e.message ?: "生成标题失败")
+            }
+        }
+    }
+
     fun abort() {
         scope.launch {
             runCatching { client.abort(sessionId) }

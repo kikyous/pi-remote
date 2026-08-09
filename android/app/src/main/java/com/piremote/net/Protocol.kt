@@ -173,6 +173,10 @@ data class AbortResultDto(val aborted: Boolean = false)
 @Serializable
 data class NewSessionDto(val id: String)
 
+/** Response of `POST /api/v1/sessions/:id/title`. */
+@Serializable
+data class TitleDto(val title: String)
+
 /** Response of `DELETE /sessions/:id` and `DELETE /workspaces`. */
 @Serializable
 data class DeleteResultDto(val deleted: Int)
