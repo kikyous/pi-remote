@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -392,14 +393,18 @@ private fun MorePanel(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         cells.chunked(4).forEach { rowCells ->
+            // Fixed column width + start alignment: a partial last row (e.g. a
+            // single trailing item) sits at the left like WeChat, not centered.
             Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 rowCells.forEach { cell ->
                     Column(
-                        Modifier.clickable(enabled = cell.label != "生成中…") { cell.action() },
+                        Modifier
+                            .width(64.dp)
+                            .clickable(enabled = cell.label != "生成中…") { cell.action() },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
