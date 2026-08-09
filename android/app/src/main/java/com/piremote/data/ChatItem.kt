@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 
 /**
@@ -24,6 +25,8 @@ sealed interface ChatItem {
         val thinking: Thinking?,
         val toolCalls: List<ToolCall>,
         val error: String?,
+        /** Token usage of this turn; only assistant messages carry it. */
+        val usage: TokenUsage? = null,
     ) : ChatItem
 
     /** A tool result not claimed by any visible call — shown standalone. */
@@ -43,6 +46,34 @@ sealed interface ChatItem {
 
 data class Thinking(val preview: String, val truncation: Truncation?)
 
+/** Per-turn LLM usage, as pi reports it on the assistant message. */
+data class TokenUsage(
+    val input: Int,
+    val output: Int,
+    val cacheRead: Int,
+    /** Total cost in dollars (cache reads included). */
+    val cost: Double,
+) {
+    /** "2,365 in · 89 out · 131,072 cache R · $0.0004" — the pi TUI style. */
+    val summary: String
+        get() = buildList {
+            add("${formatCount(input)} in")
+            add("${formatCount(output)} out")
+            if (cacheRead > 0) add("${formatCount(cacheRead)} cache R")
+            add(formatCost(cost))
+        }.joinToString(" · ")
+}
+
+private fun formatCount(n: Int): String = String.format("%,d", n)
+
+private fun formatCost(cost: Double): String {
+    val text = when {
+        cost >= 1.0 -> "%.2f".format(cost)
+        cost >= 0.0001 -> "%.4f".format(cost)
+        else -> "%.6f".format(cost) // avoid "$0.0000" for sub-cent turns
+    }
+    return "$$text"
+}
 data class ToolCall(
     val id: String,
     val name: String,
@@ -155,6 +186,18 @@ private fun parseAssistant(entryId: String, message: JsonObject): ChatItem {
         thinking = thinking,
         toolCalls = calls,
         error = message.str("errorMessage"),
+        usage = parseUsage(message["usage"]),
+    )
+}
+
+private fun parseUsage(raw: Any?): TokenUsage? {
+    val obj = raw as? JsonObject ?: return null
+    val costObj = obj["cost"] as? JsonObject
+    return TokenUsage(
+        input = obj.int("input") ?: 0,
+        output = obj.int("output") ?: 0,
+        cacheRead = obj.int("cacheRead") ?: 0,
+        cost = costObj?.double("total") ?: 0.0,
     )
 }
 
@@ -261,6 +304,8 @@ fun linkToolResults(items: List<ChatItem>): List<ChatItem> {
 private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
 
 private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
+
+private fun JsonObject.double(key: String): Double? = (this[key] as? JsonPrimitive)?.doubleOrNull
 
 private fun JsonObject.bool(key: String): Boolean = (this[key] as? JsonPrimitive)?.booleanOrNull ?: false
 

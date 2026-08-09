@@ -99,7 +99,11 @@ fun ChatScreen(
     // Keep the newest content in view as it streams in, but only when the user
     // is already at the bottom — never yank them away from what they scrolled to.
     val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex <= 1 } }
-    LaunchedEffect(streaming.text, state.items.size) {
+    // Key on the whole streaming state, not just the text: during a tool run
+    // (bash etc.) the bubble grows via activeTool.partialOutput while text stays
+    // unchanged — with narrower keys the effect would never re-run and the new
+    // output would pile up below the fold until the user pulls it into view.
+    LaunchedEffect(streaming, state.items.size) {
         if (atBottom) listState.animateScrollToItem(0)
     }
 
