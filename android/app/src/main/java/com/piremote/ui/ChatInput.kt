@@ -254,9 +254,10 @@ fun StreamingBubble(
 
         if (toolName != null) {
             // One card only: the tool indicator is a plain row inside the
-            // bubble, not a nested box.
+            // bubble, not a nested box. Same 4dp top gap as the output below,
+            // so the running tool and its output share one rhythm.
             Row(
-                Modifier.fillMaxWidth().padding(top = 6.dp),
+                Modifier.fillMaxWidth().padding(top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
