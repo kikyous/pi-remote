@@ -287,7 +287,10 @@ fun linkToolResults(items: List<ChatItem>): List<ChatItem> {
                     toolCalls = item.toolCalls.map { call ->
                         val result = resultsByCallId[call.id]
                         if (result != null) claimed += call.id
-                        call.copy(result = result)
+                        // A call that already carries its result (linked by an
+                        // earlier pass, whose orphan was then removed) must keep
+                        // it — re-linking over a bigger list must not wipe it.
+                        call.copy(result = result ?: call.result)
                     },
                 )
             }

@@ -56,4 +56,50 @@ class LinkToolResultsTest {
         val assistantItem = items2.filterIsInstance<ChatItem.Assistant>().single()
         assertNotNull("result must link when it arrived first", assistantItem.toolCalls.single().result)
     }
+
+    /**
+     * Re-linking over a larger list (loadOlder merges a page, then links the
+     * whole list again) must not wipe results that were already linked: their
+     * orphan was consumed on the first pass, so the orphan map is empty for
+     * them on the second.
+     */
+    @Test
+    fun relinkingKeepsAlreadyLinkedResults() {
+        val assistant = entry(
+            """{"type":"message","id":"assistant-1","message":{"role":"assistant","content":[
+                {"type":"toolCall","id":"call_1","name":"bash","arguments":{"command":"echo hi"}}
+            ]}}""",
+        )
+        val toolResult = entry(
+            """{"type":"message","id":"result-1","message":{"role":"toolResult","toolCallId":"call_1","toolName":"bash",
+                "content":[{"type":"text","text":"hi from bash"}],"isError":false}}""",
+        )
+        // The merged older page has its own (different) pair, so the orphan map
+        // is non-empty and re-linking actually runs.
+        val olderCall = entry(
+            """{"type":"message","id":"assistant-2","message":{"role":"assistant","content":[
+                {"type":"toolCall","id":"call_2","name":"bash","arguments":{"command":"old"}}
+            ]}}""",
+        )
+        val olderResult = entry(
+            """{"type":"message","id":"result-2","message":{"role":"toolResult","toolCallId":"call_2","toolName":"bash",
+                "content":[{"type":"text","text":"old out"}],"isError":false}}""",
+        )
+
+        // First pass links the pair and consumes the orphan.
+        val linked = linkToolResults(listOfNotNull(parseEntry(assistant), parseEntry(toolResult)))
+        assertEquals(0, linked.filterIsInstance<ChatItem.OrphanToolResult>().size)
+        assertNotNull(linked.filterIsInstance<ChatItem.Assistant>().single().toolCalls.single().result)
+
+        // A later merge re-links the whole list; the already-linked result must survive.
+        val relinked = linkToolResults(linked + listOfNotNull(parseEntry(olderCall), parseEntry(olderResult)))
+        val call1 = relinked.filterIsInstance<ChatItem.Assistant>().first { it.entryId == "assistant-1" }
+        assertNotNull(
+            "re-linking must keep an already-linked result",
+            call1.toolCalls.single().result,
+        )
+        // The older pair still links.
+        val call2 = relinked.filterIsInstance<ChatItem.Assistant>().first { it.entryId == "assistant-2" }
+        assertEquals("old out", call2.toolCalls.single().result?.text)
+    }
 }
