@@ -1,6 +1,10 @@
 package com.piremote.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -10,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -67,6 +72,11 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
     val models by repo.models.collectAsStateWithLifecycle()
     var screen by remember { mutableStateOf<Screen>(Screen.Projects) }
 
+    // Root snackbar for one-shot feedback that outlives a single screen
+    // (e.g. "workspace created"), drawn over whatever is on top.
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
+
     // System back pops the navigation stack instead of exiting the app:
     // Chat → Sessions → Projects. On the root the handler is disabled so the
     // system default (finishing the activity) applies — a registered BackHandler
@@ -106,26 +116,43 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
 
     if (!loaded) return
 
-    if (!connection.isConfigured) {
-        ConnectScreen(
-            initial = connection,
-            onSave = { scope.launch { settings.save(it) } },
-            onCancel = null,
-            modifier = modifier,
-        )
-        return
-    }
+    Box(modifier) {
+        when {
+            !connection.isConfigured -> {
+                ConnectScreen(
+                    initial = connection,
+                    onSave = { scope.launch { settings.save(it) } },
+                    onCancel = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
-    when (val current = screen) {
-        Screen.Projects -> ProjectListScreen(
-            repo = repo,
-            onOpenProject = {
-                repo.selectProject(it.cwd)
-                screen = Screen.Sessions(it)
-            },
-            onOpenSettings = { screen = Screen.Settings },
-            modifier = modifier,
-        )
+            else -> when (val current = screen) {
+                Screen.Projects -> ProjectListScreen(
+                    repo = repo,
+                    onOpenProject = {
+                        repo.selectProject(it.cwd)
+                        screen = Screen.Sessions(it)
+                    },
+                    onOpenSettings = { screen = Screen.Settings },
+                    onNewWorkspace = {
+                        repo.createWorkspace { ws ->
+                            val project = ProjectDto(
+                                cwd = ws.cwd,
+                                name = ws.cwd.substringAfterLast('/'),
+                                sessionCount = 0,
+                                lastModified = java.time.Instant.now().toString(),
+                            )
+                            screen = Screen.Chat(ws.id, project)
+                            snackbarScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    if (ws.created) "已创建工作区 ${ws.cwd}" else "已复用工作区 ${ws.cwd}",
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
 
         is Screen.Sessions -> SessionListScreen(
             repo = repo,
@@ -133,7 +160,7 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
             onOpenSession = { screen = Screen.Chat(it.id, current.project) },
             onOpenNewSession = { screen = Screen.Chat(it, current.project) },
             onBack = { screen = Screen.Projects },
-            modifier = modifier,
+            modifier = Modifier.fillMaxSize(),
         )
 
         is Screen.Chat ->
@@ -154,7 +181,7 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                             screen = Screen.Chat(newId, current.project)
                         }
                     },
-                    modifier = modifier,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -162,7 +189,7 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
             repo = repo,
             cwd = current.cwd,
             onBack = { screen = current.backTo },
-            modifier = modifier,
+            modifier = Modifier.fillMaxSize(),
         )
 
         Screen.Settings -> ConnectScreen(
@@ -172,7 +199,13 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                 screen = Screen.Projects
             },
             onCancel = { screen = Screen.Projects },
-            modifier = modifier,
+            modifier = Modifier.fillMaxSize(),
+        )
+            }
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
 }

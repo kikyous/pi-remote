@@ -95,6 +95,16 @@ class PiRemoteClient(
         ),
     )
 
+    /** One-tap daily default workspace on the server: `~/pi-cwd-YYYYMMDD`. */
+    suspend fun createWorkspace(): WorkspaceDto = post("workspaces", "{}")
+
+    /** Delete a single session (fails with 409 if it has forked children). */
+    suspend fun deleteSession(id: String): DeleteResultDto = delete("sessions/$id")
+
+    /** Delete every session in a workspace directory (the dir itself stays). */
+    suspend fun deleteWorkspace(cwd: String): DeleteResultDto =
+        delete("workspaces?cwd=${encodeCwd(cwd)}")
+
     /**
      * @param streamingBehavior `"steer"` to interrupt a running turn, `"followUp"`
      *   to queue after it. Omitting it while the session runs yields
@@ -153,6 +163,9 @@ class PiRemoteClient(
 
     private suspend inline fun <reified T> patch(path: String, body: String): T =
         request(Request.Builder().url(url(path)).patch(body.toRequestBody(JSON_MEDIA)))
+
+    private suspend inline fun <reified T> delete(path: String): T =
+        request(Request.Builder().url(url(path)).delete())
 
     private suspend inline fun <reified T> request(builder: Request.Builder): T {
         val text = execute(builder.header("Authorization", "Bearer $token").build())

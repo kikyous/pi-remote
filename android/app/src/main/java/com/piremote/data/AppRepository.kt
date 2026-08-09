@@ -5,6 +5,7 @@ import com.piremote.net.ModelDto
 import com.piremote.net.PiRemoteClient
 import com.piremote.net.ProjectDto
 import com.piremote.net.SessionSummaryDto
+import com.piremote.net.WorkspaceDto
 import com.piremote.net.SocketStatus
 import com.piremote.service.AgentForegroundService
 import kotlinx.coroutines.CoroutineScope
@@ -213,6 +214,48 @@ class AppRepository(
                 onCreated(created.id)
             } catch (e: Exception) {
                 _browse.update { it.copy(error = e.message ?: "新建会话失败") }
+            }
+        }
+    }
+
+    /**
+     * Create the daily default workspace (`~/pi-cwd-YYYYMMDD` on the server)
+     * and hand back its session id, path, and whether the dir was fresh.
+     */
+    fun createWorkspace(onCreated: (WorkspaceDto) -> Unit) {
+        scope.launch {
+            try {
+                val ws = client.createWorkspace()
+                refreshProjects()
+                onCreated(ws)
+            } catch (e: Exception) {
+                _browse.update { it.copy(error = e.message ?: "新建工作区失败") }
+            }
+        }
+    }
+
+    /** Delete one session; [onResult] receives null on failure (e.g. has forks). */
+    fun deleteSession(id: String, cwd: String, onResult: (String?) -> Unit) {
+        scope.launch {
+            try {
+                client.deleteSession(id)
+                refreshSessions(cwd)
+                onResult(null)
+            } catch (e: Exception) {
+                onResult(e.message ?: "删除失败")
+            }
+        }
+    }
+
+    /** Delete every session in a workspace; [onResult] receives null on success. */
+    fun deleteWorkspace(cwd: String, onResult: (String?) -> Unit) {
+        scope.launch {
+            try {
+                client.deleteWorkspace(cwd)
+                refreshProjects()
+                onResult(null)
+            } catch (e: Exception) {
+                onResult(e.message ?: "删除失败")
             }
         }
     }

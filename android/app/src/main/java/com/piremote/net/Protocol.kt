@@ -173,6 +173,19 @@ data class AbortResultDto(val aborted: Boolean = false)
 @Serializable
 data class NewSessionDto(val id: String)
 
+/** Response of `DELETE /sessions/:id` and `DELETE /workspaces`. */
+@Serializable
+data class DeleteResultDto(val deleted: Int)
+
+
+/** Response of `POST /api/v1/workspaces`: the daily default workspace. */
+@Serializable
+data class WorkspaceDto(
+    val id: String,
+    val cwd: String,
+    val created: Boolean,
+)
+
 @Serializable
 data class UpdateResultDto(val updated: List<String> = emptyList())
 
