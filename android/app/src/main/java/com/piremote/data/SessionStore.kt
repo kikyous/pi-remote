@@ -1,7 +1,6 @@
 package com.piremote.data
 
 import com.piremote.net.ApiException
-import com.piremote.net.EntryPageDto
 import com.piremote.net.PiRemoteClient
 import com.piremote.net.SessionDetailDto
 import com.piremote.net.WsMessage
@@ -102,7 +101,7 @@ class SessionStore(
         activeJob = scope.launch {
             try {
                 val detail = client.sessionDetail(sessionId)
-                val page = fetchTailPage()
+                val page = client.entries(sessionId, before = null, limit = PAGE_SIZE)
                 if (!isCurrent(myEpoch)) return@launch
 
                 oldestId = page.oldestId
@@ -118,27 +117,6 @@ class SessionStore(
                 _state.update { it.copy(loading = false, error = e.readable()) }
             }
         }
-    }
-
-    /**
-     * Fetch the newest page, widening once if the boundary split a tool call
-     * from its result.
-     *
-     * A result is always persisted immediately after its call, so the newest
-     * page can end exactly on an assistant message whose result is the first
-     * entry of the next page. Linking then never sees the pair together, and
-     * the output stays missing until an older page happens to merge in. Widen
-     * the fetch a little and re-check; if still unmatched the result genuinely
-     * does not exist yet (the call is still running), and the live stream will
-     * deliver it.
-     */
-    private suspend fun fetchTailPage(): EntryPageDto {
-        val page = client.entries(sessionId, before = null, limit = PAGE_SIZE)
-        val linked = linkToolResults(parseEntries(page.entries))
-        val tail = linked.lastOrNull() as? ChatItem.Assistant
-        val tailUnmatched = tail != null && tail.toolCalls.any { it.result == null }
-        if (!tailUnmatched) return page
-        return client.entries(sessionId, before = null, limit = PAGE_SIZE + TAIL_MARGIN)
     }
 
     /** Fetch the page before what is loaded. Safe to call repeatedly while scrolling. */
@@ -429,12 +407,6 @@ class SessionStore(
 
     companion object {
         const val PAGE_SIZE = 50
-
-        /**
-         * Slack past the page boundary for a just-finished tool result, so a
-         * refresh never splits a call from its result.
-         */
-        const val TAIL_MARGIN = 16
 
         /**
          * Ceiling on resident items. The largest real session is 2.7MB across
