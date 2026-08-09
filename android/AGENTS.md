@@ -15,8 +15,10 @@
 | Kotlin | 1.9.24 | Compose Compiler 必须配对 1.5.14 |
 | compileSdk | 34 | build-tools 34.0.0 |
 
-**JDK 路径写在 `gradle.properties` 的 `org.gradle.java.home`**。系统默认 `java` 是 JDK 1.8，
-不指定就构建不了。换机器时改这一行或删掉（若 `JAVA_HOME` 已是 17+）。
+**JDK 通过 `JAVA_HOME` 环境变量指定**（`~/.zshrc` 里已 export 到 `~/tools/jdk-17.0.20+8`）。
+系统默认 `java` 仍是 JDK 1.8，但 gradlew 会优先用 `JAVA_HOME`。不要在 `gradle.properties`
+里写 `org.gradle.java.home`——那是本机绝对路径，会弄坏 CI 和其他机器。
+在 IDE 里构建时，记得把 Gradle JDK 设为 17（IDE 不会读 `~/.zshrc`）。
 
 踩过的坑，避免重走：
 
