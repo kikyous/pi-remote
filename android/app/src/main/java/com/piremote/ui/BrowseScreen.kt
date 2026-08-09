@@ -1,17 +1,23 @@
 package com.piremote.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -28,13 +34,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,14 +47,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.piremote.data.AppRepository
 import com.piremote.net.ProjectDto
 import com.piremote.net.SessionSummaryDto
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** Projects — one row per working directory that has sessions. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,21 +110,7 @@ fun ProjectListScreen(
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(state.projects, key = { it.cwd }) { project ->
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { value ->
-                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    pendingDelete = project
-                                    false // keep the row; the dialog decides
-                                } else {
-                                    false
-                                }
-                            },
-                        )
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            enableDismissFromStartToEnd = false,
-                            backgroundContent = { DeleteBackground() },
-                        ) {
+                        SwipeRevealAction(onAction = { pendingDelete = project }) {
                             Column(
                                 Modifier
                                     .fillMaxWidth()
@@ -232,21 +225,7 @@ fun SessionListScreen(
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(state.sessions, key = { it.id }) { session ->
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { value ->
-                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    pendingDelete = session
-                                    false // keep the row; the dialog decides
-                                } else {
-                                    false
-                                }
-                            },
-                        )
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            enableDismissFromStartToEnd = false,
-                            backgroundContent = { DeleteBackground() },
-                        ) {
+                        SwipeRevealAction(onAction = { pendingDelete = session }) {
                             Column(
                                 Modifier
                                     .fillMaxWidth()
@@ -302,21 +281,76 @@ fun SessionListScreen(
     }
 }
 
-/** Red swipe background with a delete icon on the trailing edge. */
+/**
+ * iOS-style swipe-to-reveal: dragging a row left slides it aside, exposing a
+ * delete action pinned to the trailing edge. No full-row tint — the action is
+ * the only colored element, and it exists only while revealed.
+ */
 @Composable
-private fun RowScope.DeleteBackground() {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.errorContainer)
-            .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.CenterEnd,
-    ) {
-        Icon(
-            Icons.Default.Delete,
-            contentDescription = "删除",
-            tint = MaterialTheme.colorScheme.onErrorContainer,
-        )
+private fun SwipeRevealAction(
+    onAction: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val density = LocalDensity.current
+    val actionWidth = 88.dp
+    val actionWidthPx = with(density) { actionWidth.toPx() }
+    val offsetX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    Box(Modifier.fillMaxWidth()) {
+        // Full-size layer behind the row; holds the action pinned to the end.
+        // matchParentSize gives it the row's exact height, so the action
+        // fills the row from top to bottom.
+        Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+            Box(
+                Modifier
+                    .width(actionWidth)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.error)
+                    .clickable {
+                        scope.launch { offsetX.animateTo(0f, tween(150)) }
+                        onAction()
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "删除",
+                    tint = MaterialTheme.colorScheme.onError,
+                )
+            }
+        }
+
+        // The row itself; only this slides, its background never changes.
+        // It must be opaque so the action underneath stays hidden until the
+        // row is dragged aside.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { scope.launch { offsetX.stop() } },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            scope.launch {
+                                offsetX.snapTo((offsetX.value + dragAmount).coerceIn(-actionWidthPx, 0f))
+                            }
+                        },
+                        onDragEnd = {
+                            scope.launch {
+                                // A quarter swipe is enough to keep it revealed.
+                                val target = if (offsetX.value < -actionWidthPx * 0.25f) -actionWidthPx else 0f
+                                offsetX.animateTo(target, tween(150))
+                            }
+                        },
+                        onDragCancel = { scope.launch { offsetX.animateTo(0f, tween(150)) } },
+                    )
+                },
+        ) {
+            content()
+        }
     }
 }
 
