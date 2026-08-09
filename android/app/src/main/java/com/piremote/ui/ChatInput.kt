@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -85,6 +86,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 
 /**
  * The composer.
@@ -386,27 +388,41 @@ private fun MorePanel(
         add(Cell("发送图片", Icons.Outlined.Image, onPickImages))
     }
 
-    Column(
+    // The grid is centered as a whole; items flow left-to-right inside fixed
+    // columns, so a partial last row left-aligns under the first column.
+    // Column count adapts to the available width (more columns in landscape).
+    BoxWithConstraints(
         modifier
             .background(MaterialTheme.colorScheme.surface)
             .padding(top = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        cells.chunked(4).forEach { rowCells ->
-            // Fixed column width + start alignment: a partial last row (e.g. a
-            // single trailing item) sits at the left like WeChat, not centered.
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                rowCells.forEach { cell ->
-                    Column(
-                        Modifier
-                            .width(64.dp)
-                            .clickable(enabled = cell.label != "生成中…") { cell.action() },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
+        val cellWidth = 68.dp
+        val gap = 10.dp
+        // Columns adapt to the available width (landscape fits more), but when
+        // every cell fits in a single row use exactly that many so the row
+        // centers as a whole instead of leaving a sparse tail.
+        val rawColumns = ((maxWidth - 48.dp) / (cellWidth + gap)).toInt().coerceIn(3, 8)
+        val columns = if (cells.size < rawColumns) cells.size else rawColumns
+        val gridWidth = (cellWidth + gap) * columns.toFloat() - gap
+
+        Column(
+            Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            cells.chunked(columns).forEach { rowCells ->
+                Row(
+                    Modifier.width(gridWidth),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    rowCells.forEach { cell ->
+                        Column(
+                            Modifier
+                                .width(cellWidth)
+                                .clickable(enabled = cell.label != "生成中…") { cell.action() },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
                         Box(
                             Modifier
                                 .size(56.dp)
@@ -436,6 +452,7 @@ private fun MorePanel(
                 }
             }
         }
+    }
     }
 }
 
