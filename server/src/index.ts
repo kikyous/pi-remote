@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
-import { createSession, disposeAll, isRunning } from "./agent-pool.ts";
+import { createSession, createWorkspace, disposeAll, isRunning } from "./agent-pool.ts";
+import { deleteSession, deleteWorkspace } from "./delete.ts";
 import {
 	abortSession,
 	listModels,
@@ -103,6 +104,14 @@ function main(): void {
 			...(typeof body.thinkingLevel === "string" ? { thinkingLevel: body.thinkingLevel } : {}),
 		}).then((id) => ({ id }));
 	});
+
+	// One-tap default workspace: `~/pi-cwd-YYYYMMDD` on the server. The path is
+	// derived entirely server-side, so the client never sends a directory.
+	router.post(`${API_PREFIX}/workspaces`, () => createWorkspace());
+
+	// Swipe-to-delete: sessions, and whole workspaces (all their sessions).
+	router.delete(`${API_PREFIX}/sessions/:id`, (ctx) => deleteSession(ctx.params.id!));
+	router.delete(`${API_PREFIX}/workspaces`, (ctx) => deleteWorkspace(decodeCwd(ctx.query.get("cwd"))));
 
 	router.post(`${API_PREFIX}/sessions/:id/prompt`, (ctx) => {
 		const body = asRecord(ctx.body);

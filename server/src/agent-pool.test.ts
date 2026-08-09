@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { type BufferedEvent, computeReplay } from "./agent-pool.ts";
+import { type BufferedEvent, computeReplay, todayStamp } from "./agent-pool.ts";
 
 /** A buffer holding seqs `from..to`, as the ring buffer would after eviction. */
 function buffer(from: number, to: number): BufferedEvent[] {
@@ -65,4 +65,14 @@ test("an empty buffer behind the client's cursor reports a gap", () => {
 
 	assert.deepEqual(replay, []);
 	assert.equal(gap, true);
+});
+
+test("todayStamp pads day and month to two digits", () => {
+	const d = new Date(2026, 7, 9); // Aug 9
+	assert.equal(todayStamp(d), "20260809");
+});
+
+test("todayStamp uses the server-local date", () => {
+	const d = new Date(2026, 0, 3); // Jan 3
+	assert.equal(todayStamp(d), "20260103");
 });

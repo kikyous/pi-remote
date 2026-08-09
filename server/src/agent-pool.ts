@@ -1,4 +1,6 @@
-import { statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import {
 	type AgentSession,
@@ -238,6 +240,30 @@ export async function createSession(
 	invalidateSessionCache();
 	startSweeper();
 	return sessionId;
+}
+
+/**
+ * Create the daily default workspace: `~/pi-cwd-YYYYMMDD` (server-local date).
+ *
+ * The directory is created once per day; later calls on the same day reuse it
+ * and only start a new session inside. The client cannot influence the path at
+ * all — no injection surface, and two devices always agree on "today".
+ */
+export async function createWorkspace(): Promise<{ id: string; cwd: string; created: boolean }> {
+	const cwd = join(homedir(), `pi-cwd-${todayStamp()}`);
+	let created = false;
+	if (!existsSync(cwd)) {
+		mkdirSync(cwd, { recursive: true });
+		created = true;
+	}
+	const id = await createSession(cwd, {});
+	return { id, cwd, created };
+}
+
+/** Server-local `pi-cwd-YYYYMMDD` suffix so all devices share "today". */
+export function todayStamp(date = new Date()): string {
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
 }
 
 /**

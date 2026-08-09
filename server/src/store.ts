@@ -91,6 +91,26 @@ export function invalidateSessionCache(): void {
 	snapshot = undefined;
 }
 
+/** Remove a placeholder that never made it to disk (empty new session). */
+export function dropPendingSession(id: string): void {
+	pending.delete(id);
+}
+
+/** Sessions whose file (or pending placeholder) lives under `cwd`. */
+export async function sessionsByCwd(cwd: string): Promise<SessionInfo[]> {
+	const { sessions } = await getSnapshot();
+	return sessions.filter((info) => info.cwd === cwd);
+}
+
+/**
+ * Cwds of sessions forked from `path` (empty if none). Used to decide whether
+ * deleting a parent would orphan forks in another workspace.
+ */
+export async function childCwds(path: string): Promise<string[]> {
+	const { sessions } = await getSnapshot();
+	return sessions.filter((info) => info.parentSessionPath === path).map((info) => info.cwd);
+}
+
 export async function listProjects(): Promise<ProjectDto[]> {
 	const { sessions } = await getSnapshot();
 	const byCwd = new Map<string, { count: number; lastModified: number }>();
