@@ -12,8 +12,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -47,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,7 +80,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.piremote.net.PromptImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -88,6 +92,7 @@ import kotlinx.coroutines.withContext
  * that actually matters at that moment — sending anyway needs an explicit
  * steer/queue decision, handled by the dialog in ChatScreen.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatInput(
     draft: StateFlow<String>,
@@ -114,6 +119,11 @@ fun ChatInput(
     // The "更多" panel (WeChat-style): tapping + swaps the keyboard for a
     // grid of actions at exactly the IME height, so nothing jumps.
     var panelOpen by remember { mutableStateOf(false) }
+    // While the keyboard slides up over the panel, keep the panel mounted so
+    // the space below the composer is never empty (no drop-then-push jitter).
+    var panelClosing by remember { mutableStateOf(false) }
+    val panelVisible = panelOpen || panelClosing
+    val scope = rememberCoroutineScope()
 
     // Freeze the last keyboard height: while the panel is open the keyboard is
     // hidden, but the panel takes its place 1:1 (no jitter on toggle). Only
@@ -137,15 +147,27 @@ fun ChatInput(
             keyboard?.hide()
         }
     }
-    val togglePanel = {
-        panelOpen = !panelOpen
-        setIme(!panelOpen)
+    val togglePanel: () -> Unit = {
+        if (panelOpen) {
+            panelOpen = false
+            panelClosing = true
+            setIme(true)
+            scope.launch {
+                delay(400) // long enough for the IME slide-up to cover the panel
+                panelClosing = false
+            }
+        } else {
+            panelOpen = true
+            panelClosing = false
+            setIme(false)
+        }
     }
     val closePanel = { panelOpen = false }
 
     // Back closes the panel first, then the screen.
     BackHandler(enabled = panelOpen) {
         panelOpen = false
+        panelClosing = false
         setIme(true)
     }
 
@@ -169,16 +191,25 @@ fun ChatInput(
     }
 
     // enableEdgeToEdge draws behind the system bars, so the composer has to
-    // step around the navigation bar. `imePadding` applies only while the
-    // keyboard is up: with the panel open the keyboard is hidden and the panel
-    // itself occupies exactly the keyboard's height, so the composer never
-    // moves when swapping the two.
+    // step around the navigation bar. Instead of `imePadding()` (which animates
+    // with the keyboard and would let the composer drop during a panel<->ime
+    // switch), pad by the IME *target*: it jumps to the full keyboard height
+    // the instant show() is called, so the composer never moves either way.
     Column(
         modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .navigationBarsPadding()
-            .then(if (!panelOpen) Modifier.imePadding() else Modifier),
+            .padding(
+                bottom = with(density) {
+                    // Panel mode: the panel itself provides the height, so no
+                    // extra padding (avoids double-counting). Keyboard mode:
+                    // pad by the IME *target* so the composer never drops while
+                    // the keyboard animates in.
+                    val padPx = if (panelVisible) 0 else WindowInsets.imeAnimationTarget.getBottom(density)
+                    padPx.toDp()
+                },
+            ),
     ) {
         if (queued.isNotEmpty()) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
@@ -299,7 +330,7 @@ fun ChatInput(
 
         // WeChat-style action panel: occupies exactly the keyboard height, so
         // swapping keyboard <-> panel never moves the composer.
-        if (panelOpen) {
+        if (panelVisible) {
             val panelHeight =
                 if (panelHeightPx > 100) panelHeightPx else with(density) { 300.dp.toPx() }.toInt()
             MorePanel(
