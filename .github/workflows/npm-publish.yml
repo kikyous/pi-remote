@@ -1,0 +1,49 @@
+name: Publish npm package
+
+# Publish pi-remote-server to npm:
+#   - on any v* tag push (e.g. `git tag v0.2.0 && git push origin v0.2.0`)
+#   - manually from the Actions tab
+#
+# The tag version becomes the published package version (package.json is
+# bumped in place, nothing is committed). Requires an npm access token stored
+# as the `NPM_TOKEN` repository secret.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Sync package version with git tag
+        # e.g. tag v0.2.0  ->  package.json "version": "0.2.0"
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

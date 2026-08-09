@@ -63,7 +63,21 @@ Or side-load the ready-made APK at `android/app/build/outputs/apk/debug/app-debu
 
 **First launch:** enter the server address and token, tap **Connect**. The app verifies the connection before saving, so typos are caught immediately.
 
-> **Build note:** Requires JDK 17 — configure `org.gradle.java.home` in `android/gradle.properties` if needed.
+> **Build note:** Requires JDK 17 — make sure `JAVA_HOME` points at a JDK 17 (Gradle picks it up automatically).
+
+---
+
+## ⚙️ Automatic builds (GitHub Actions)
+
+Two workflows live in `.github/workflows/`:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `npm-publish.yml` | push a `v*` tag | typecheck + test, then publishes `pi-remote-server` to npm (version synced to the tag) |
+| `android-build.yml` | push / PR / manual | runs unit tests, builds the debug APK, uploads it as an artifact — and attaches it to the GitHub Release on `v*` tags |
+
+- npm publishing needs an **`NPM_TOKEN`** repository secret (npm access token).
+- Tag `v0.2.0` → publishes `pi-remote-server@0.2.0` and a release with the APK attached.
 
 ---
 

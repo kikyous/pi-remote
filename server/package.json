@@ -4,6 +4,9 @@
   "description": "LAN bridge server exposing the pi coding agent to the Pi Remote Android app",
   "license": "MIT",
   "type": "module",
+  "files": [
+    "src"
+  ],
   "engines": {
     "node": ">=22.19.0"
   },
@@ -12,16 +15,17 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
-    "test:e2e": "node test/e2e.mjs && node test/e2e2.mjs && node test/e2e3.mjs"
+    "test:e2e": "node test/e2e.mjs && node test/e2e2.mjs && node test/e2e3.mjs",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.84.0",
+    "tsx": "^4.20.6",
     "ws": "8.18.3"
   },
   "devDependencies": {
     "@types/node": "^22",
     "@types/ws": "^8.18.1",
-    "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }
 }
