@@ -288,17 +288,21 @@ private fun ToolCallsCard(
     expanded: Map<String, String>,
     onExpand: (Truncation) -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-    ) {
-        calls.forEachIndexed { index, call ->
-            if (index > 0) HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            ToolCallRow(call, expanded, onExpand)
+    // One card per call. pi emits several toolCalls back to back inside a
+    // single message; rendering them in one card with hairline dividers makes
+    // consecutive bash steps read as a single merged block.
+    Column(Modifier.fillMaxWidth()) {
+        calls.forEach { call ->
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                ToolCallRow(call, expanded, onExpand)
+            }
         }
     }
 }
