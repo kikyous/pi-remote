@@ -1,5 +1,5 @@
 {
-  "name": "pi-remote-server",
+  "name": "pi-remote-bridge",
   "version": "0.1.0",
   "description": "LAN bridge server exposing the pi coding agent to the Pi Remote Android app",
   "license": "MIT",

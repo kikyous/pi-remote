@@ -67,10 +67,10 @@ export function parseArgs(argv: string[]): ServerConfig {
 }
 
 function printUsage(): void {
-	console.log(`pi-remote-server - LAN bridge for the pi coding agent
+	console.log(`pi-remote-bridge - LAN bridge for the pi coding agent
 
 Usage:
-  pi-remote-server [options]
+  pi-remote-bridge [options]
 
 Options:
   --port, -p <port>   Port to listen on (default: ${DEFAULT_PORT})

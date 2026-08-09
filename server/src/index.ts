@@ -218,7 +218,7 @@ function parsePart(raw: string | null): FullPart {
 
 function printBanner(port: number, host: string, token: string): void {
 	const shown = host === "0.0.0.0" || host === "::" ? (lanAddresses()[0] ?? "127.0.0.1") : host;
-	console.log(`pi-remote-server ${VERSION}`);
+	console.log(`pi-remote-bridge ${VERSION}`);
 	console.log(`  URL:   http://${shown}:${port}`);
 	console.log(`  Token: ${token}`);
 	if (host === "0.0.0.0" || host === "::") {

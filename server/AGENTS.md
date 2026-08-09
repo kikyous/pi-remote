@@ -1,4 +1,4 @@
-# pi-remote-server — 开发笔记
+# pi-remote-bridge — 开发笔记
 
 ```bash
 npm run dev        # tsx watch, 端口 30150
