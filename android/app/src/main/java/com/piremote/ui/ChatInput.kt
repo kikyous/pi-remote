@@ -89,7 +89,7 @@ fun ChatInput(
     onPickModel: () -> Unit,
     onPickThinking: (() -> Unit)?,
     onNewSession: () -> Unit,
-    onSendImage: (android.net.Uri) -> Unit,
+    onSendImage: (List<android.net.Uri>) -> Unit,
     attachments: List<PromptImage>,
     onRemoveAttachment: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -106,12 +106,13 @@ fun ChatInput(
     // is non-focusable, so opening it never steals focus from the text field.
     BackHandler(enabled = moreOpen) { moreOpen = false }
 
-    // System photo picker: no storage permission needed, returns a readable Uri.
-    val pickImage = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
+    // System photo picker, multi-select: no storage permission needed, returns
+    // readable Uris. Cap keeps the combined base64 within the server body limit.
+    val pickImages = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACHMENTS),
+    ) { uris ->
         moreOpen = false
-        uri?.let(onSendImage)
+        if (uris.isNotEmpty()) onSendImage(uris)
     }
 
     // Shared by the send button and the Enter key: trim, send, clear.
@@ -245,7 +246,7 @@ fun ChatInput(
                                 leadingIcon = { Icon(Icons.Outlined.Image, contentDescription = null) },
                                 onClick = {
                                     moreOpen = false
-                                    pickImage.launch(
+                                    pickImages.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                                     )
                                 },
@@ -387,6 +388,9 @@ fun StreamingBubble(
  * rendering all of it would stall the frame it arrives on.
  */
 private const val LIVE_OUTPUT_TAIL = 2000
+
+/** Max images per send: picker cap keeps base64 under the server body limit. */
+private const val MAX_ATTACHMENTS = 5
 
 /** One picked image in the composer's attachment bar, with a remove button. */
 @Composable

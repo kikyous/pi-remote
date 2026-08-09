@@ -214,12 +214,12 @@ fun ChatScreen(
                         { sheet = SessionSheet.Thinking }
                     } else null,
                     onNewSession = onNewSession,
-                    onSendImage = { uri ->
+                    onSendImage = { uris ->
                         // 方案 A：先挂到附件预览条，配文字后一起发送。
                         scope.launch {
-                            val image = loadPromptImage(context, uri)
-                            if (image != null) {
-                                store.addAttachment(image)
+                            val images = uris.mapNotNull { loadPromptImage(context, it) }
+                            if (images.isNotEmpty()) {
+                                images.forEach(store::addAttachment)
                             } else {
                                 snackbar.showSnackbar("读取图片失败")
                             }
