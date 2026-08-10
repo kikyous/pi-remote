@@ -604,15 +604,20 @@ internal fun ToolCallCard(
  * pi-web thinking card: neutral bordered card with a plain "Thinking" header
  * (no chevron). The streaming turn shows just the shell; the settled card
  * adds an expandable body below the hairline divider.
+ *
+ * [active] means this turn is still reasoning. It drives both the breathing
+ * border and the header wording — a settled card reading "Thinking…" claims
+ * work that finished long ago, and languages that mark the progressive form
+ * (中文) cannot paper over that with one neutral noun the way English does.
  */
 @Composable
 internal fun ThinkingCardShell(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    breathing: Boolean = false,
+    active: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-    CardShell(modifier = modifier, breathing = breathing) {
+    CardShell(modifier = modifier, breathing = active) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -621,7 +626,7 @@ internal fun ThinkingCardShell(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                stringResource(R.string.card_thinking),
+                stringResource(if (active) R.string.card_thinking_active else R.string.card_thinking),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -60,7 +60,9 @@
     <string name="empty_session_title">(空会话)</string>
 
     <!-- Tool cards -->
-    <string name="card_thinking">思考中</string>
+    <string name="card_thinking">思考过程</string>
+    <!-- 同一张卡片在推理进行中的标题，中文需要显式的进行时 -->
+    <string name="card_thinking_active">思考中…</string>
     <string name="card_compacting">压缩上下文中…</string>
     <string name="tool_result">工具结果</string>
     <string name="tool_image_truncated">［图片，%1$s］</string>

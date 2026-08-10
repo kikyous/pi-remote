@@ -61,6 +61,8 @@
 
     <!-- Tool cards -->
     <string name="card_thinking">Thinking</string>
+    <!-- Same card while the turn is still reasoning, hence the progressive form. -->
+    <string name="card_thinking_active">Thinking…</string>
     <string name="card_compacting">Compacting…</string>
     <string name="tool_result">Tool result</string>
     <string name="tool_image_truncated">［image, %1$s］</string>

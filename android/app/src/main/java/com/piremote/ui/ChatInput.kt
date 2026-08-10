@@ -635,7 +635,7 @@ private fun StreamingThinkingCard(thinkingText: String) {
     // Saveable so scrolling the live card out of the list and back does not
     // fold the thinking body the user just opened.
     var open by rememberSaveable { mutableStateOf(false) }
-    ThinkingCardShell(breathing = true, onClick = { open = !open }) {
+    ThinkingCardShell(active = true, onClick = { open = !open }) {
         if (open && thinkingText.isNotBlank()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             // Thinking can stream to many KB; cap the live body and scroll
