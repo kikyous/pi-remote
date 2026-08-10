@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "com.piremote"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.piremote"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -28,10 +28,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
     }
@@ -41,26 +37,34 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2025.03.00")
+    // Compose 1.11.4 (BOM 2026.06.01). Everything else is pinned to the newest
+    // version whose minCompileSdk fits compileSdk 37 + AGP 9.3.
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
 
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.activity:activity-compose:1.9.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2")
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    implementation("androidx.navigation:navigation-compose:2.7.7")
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // In-app QR scanner: CameraX preview + ML Kit barcode analysis, all inside
@@ -74,8 +78,7 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
 
     // Renders the settled assistant reply as Markdown (streaming stays plain text).
-    // Pure-Compose + M3 theming; tables need ≥0.30.0.
-    implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.30.0")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.43.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

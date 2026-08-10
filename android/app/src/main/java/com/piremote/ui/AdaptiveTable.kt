@@ -25,8 +25,10 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.mikepenz.markdown.annotator.AnnotatorSettings
+import com.mikepenz.markdown.annotator.annotatorSettings
+import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.compose.components.MarkdownComponentModel
-import com.mikepenz.markdown.utils.buildMarkdownAnnotatedString
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.flavours.gfm.GFMElementTypes.HEADER
@@ -47,6 +49,11 @@ fun AdaptiveMarkdownTable(model: MarkdownComponentModel) {
     val node = model.node
     val style = model.typography.paragraph ?: MaterialTheme.typography.bodyMedium
     val textColor = MaterialTheme.colorScheme.onSurface
+    // The renderer reads its locals (typography, annotator, link handler) from
+    // composition; grab a settings snapshot once so the measurement below stays
+    // consistent. API since markdown-renderer 0.41: buildMarkdownAnnotatedString
+    // takes AnnotatorSettings instead of just the style.
+    val settings = annotatorSettings()
 
     val header = node.findChildOfType(HEADER)
     val bodyRows = node.children.filter { it.type == ROW }
@@ -60,7 +67,7 @@ fun AdaptiveMarkdownTable(model: MarkdownComponentModel) {
         fun scan(cells: List<ASTNode>) {
             cells.forEachIndexed { index, cell ->
                 if (index >= columnCount) return@forEachIndexed
-                val annotated = content.buildMarkdownAnnotatedString(cell, style)
+                val annotated = content.buildMarkdownAnnotatedString(cell, style, settings)
                 measured[index] = maxOf(measured[index], textMeasurer.measure(annotated, style).size.width)
             }
         }
@@ -94,7 +101,7 @@ fun AdaptiveMarkdownTable(model: MarkdownComponentModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     header.children.filter { it.type == CELL }.forEachIndexed { index, cell ->
                         TableCell(content, cell, columnWidths.getOrElse(index) { MAX_COL_WIDTH },
-                            style.copy(fontWeight = FontWeight.Bold), textColor)
+                            style.copy(fontWeight = FontWeight.Bold), textColor, settings)
                     }
                 }
                 HorizontalDivider(
@@ -105,7 +112,7 @@ fun AdaptiveMarkdownTable(model: MarkdownComponentModel) {
             for (row in bodyRows) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     row.children.filter { it.type == CELL }.forEachIndexed { index, cell ->
-                        TableCell(content, cell, columnWidths.getOrElse(index) { MAX_COL_WIDTH }, style, textColor)
+                        TableCell(content, cell, columnWidths.getOrElse(index) { MAX_COL_WIDTH }, style, textColor, settings)
                     }
                 }
             }
@@ -114,8 +121,15 @@ fun AdaptiveMarkdownTable(model: MarkdownComponentModel) {
 }
 
 @Composable
-private fun TableCell(content: String, cell: ASTNode, width: Dp, style: TextStyle, textColor: androidx.compose.ui.graphics.Color) {
-    val annotated = remember(cell, content) { content.buildMarkdownAnnotatedString(cell, style) }
+private fun TableCell(
+    content: String,
+    cell: ASTNode,
+    width: Dp,
+    style: TextStyle,
+    textColor: androidx.compose.ui.graphics.Color,
+    settings: AnnotatorSettings,
+) {
+    val annotated = remember(cell, content, settings) { content.buildMarkdownAnnotatedString(cell, style, settings) }
     Text(
         annotated,
         style = style.copy(color = textColor),

@@ -10,15 +10,23 @@
 | 组件 | 版本 | 位置 |
 |---|---|---|
 | JDK | Temurin 17.0.20 | `~/tools/jdk-17.0.20+8`（**不在** `/Library/Java/`） |
-| Gradle | 8.7 | wrapper，已缓存在 `~/.gradle/wrapper/dists` |
-| AGP | 8.5.2 | |
-| Kotlin | 1.9.24 | Compose Compiler 必须配对 1.5.14 |
-| compileSdk | 34 | build-tools 34.0.0 |
+| Gradle | 9.7.0 | wrapper，腾讯镜像下载（`services.gradle.org` 会断流） |
+| AGP | 9.3.1 | |
+| Kotlin | 2.4.10 | Compose 编译器随 Kotlin 2.0+ 插件化 |
+| compileSdk | 37 | build-tools 36（AGP 自动下载，许可证已接受） |
+| Compose | 1.11.4（BOM 2026.06.01） | |
 
 **JDK 通过 `JAVA_HOME` 环境变量指定**（`~/.zshrc` 里已 export 到 `~/tools/jdk-17.0.20+8`）。
 系统默认 `java` 仍是 JDK 1.8，但 gradlew 会优先用 `JAVA_HOME`。不要在 `gradle.properties`
 里写 `org.gradle.java.home`——那是本机绝对路径，会弄坏 CI 和其他机器。
 在 IDE 里构建时，记得把 Gradle JDK 设为 17（IDE 不会读 `~/.zshrc`）。
+
+**AGP 9 的两个开关**（`gradle.properties`）：
+- `android.newDsl=false`：AGP 9 默认开新 DSL（`android.newDsl=true`），经典 KGP
+  （`org.jetbrains.kotlin.android`）与新 DSL 不兼容直接报错。设 `false` 回到旧 DSL 才能继续用 KGP。
+- `android.builtInKotlin=false`：AGP 9 默认内置 Kotlin，与 KGP 链（compose/serialization 插件）冲突。
+  官方路线是迁到内置 Kotlin（去掉 kotlin-android 插件）；这里暂时用开关保住现有插件链。
+  两个开关 AGP 10 都会移除——到时候要么迁内置 Kotlin，要么升 AGP 前先解决。
 
 踩过的坑，避免重走：
 
@@ -30,6 +38,21 @@
   compileSdk 31+，而 34 又要 jlink。没有 `cmdline-tools`，装不了别的 platform。
 - `services.gradle.org` 在这台机器上会断流（实测下到 ~14MB 就中断）。需要下 Gradle 时用
   `https://mirrors.cloud.tencent.com/gradle/`。
+
+## Compose 1.11 升级踩的坑
+
+- **markdown-renderer 0.30 → 0.41+ 拆模块 + 改 API**：`buildMarkdownAnnotatedString` 从
+  `utils` 包移到 `annotator` 包，签名从 `content.buildMarkdownAnnotatedString(node, style)` 变成
+  `content.buildMarkdownAnnotatedString(node, style, annotatorSettings)`。settings 用 @Composable 的
+  `annotatorSettings()`（全参数有默认值，从组合局部读取）。函数是**扩展函数**，不能按顶层函数调用，
+  否则报 Unresolved reference。模块拆成 `multiplatform-markdown-renderer`(核心) +
+  `-m3`(主题)，MarkdownComponentModel 挪到核心模块的 `compose.components` 包。
+- **markdown-renderer 版本和 compileSdk 绑定**：0.43.0 要 compileSdk 37，0.41.0 要 36。
+- **依赖版本有 minCompileSdk 门槛**：core-ktx 1.19.0 / lifecycle 2.11.0 要 compileSdk 37；
+  compose 1.11.4 只要 35。升 compileSdk 前先查各依赖的 `aar-metadata.properties`。
+- **AGP 9 默认内置 Kotlin + 新 DSL**：见上方工具链表，`gradle.properties` 两个开关兜底。
+- **AGP 能自动装 SDK 平台**：`~/Library/Android/sdk/licenses/android-sdk-license` 已接受，
+  AGP 构建时自动下载缺失 platform/build-tools，不需要 cmdline-tools。
 
 ## 三个设计约束
 
@@ -56,6 +79,17 @@
 
 同理，entry 保持 `JsonObject` 而非解析成封闭类层次——pi 以后加新 entry 类型时，未知类型应该
 被跳过，而不是让整屏崩掉。
+
+## 扫码连接（CameraX + ML Kit，全 Compose）
+
+服务端启动横幅打印二维码，`ConnectScreen` 的「扫码连接」直接渲染 `QrScannerScreen`（Compose 全屏页，不是独立 Activity）：`PreviewView`（TextureView，`COMPATIBLE` 模式）预览 + `ImageAnalysis`（`KEEP_ONLY_LATEST`）逐帧送 ML Kit `BarcodeScanning`，取景框用四块半透明面板围出来的真实窗口。
+
+关键点：
+- **相机权限运行时申请**：扫码按钮点击时 `checkSelfPermission`，未授权就 `RequestPermission` launcher；之前 zxing 的 `CaptureActivity` 会自己弹权限框，现在没有这个兜底了。
+- **首次命中即停**：`AtomicBoolean` 防重复回调；`DisposableEffect` 里 `unbindAll()` + `clearAnalyzer()` + `shutdown()` 分析线程，避免返回后相机还亮着。
+- **为什么不用 zxing**：库自带 `CaptureActivity` 在它 manifest 里锁死 `sensorLandscape`，且 `setOrientationLocked(false)` 时 zxing 根本不碰方向（反编译 `CaptureManager.initializeFromIntent` 确认），manifest 横屏声明永远赢——怎么调都横屏。换成自己管 CameraX 后方向天然跟随设备。
+- **ML Kit 用 17.2.0（bundled 模型）**：不依赖 Google Play 服务，国产 ROM 平板也能用；代价是 APK 大约 +2.5MB。
+- **payload 解析器不能用 `android.net.Uri`**：JVM 单元测试里 `Uri.parse` 抛 `Stub!`。`QrConnect.kt` 是纯 Kotlin 手写解析（`split('&')` + 自写 `%XX` 解码），可单测。
 
 ## 与服务端的约定
 
