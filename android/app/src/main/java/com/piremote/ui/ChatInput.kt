@@ -6,11 +6,16 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -40,6 +46,7 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -60,6 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -74,8 +82,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -155,6 +163,7 @@ fun ChatInput(
 
     val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
     fun setIme(show: Boolean) {
         if (show) {
             // Hiding the keyboard earlier cleared the field's focus; show()
@@ -272,45 +281,82 @@ fun ChatInput(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            OutlinedTextField(
-                value = text,
-                onValueChange = onTextChange,
-                placeholder = { Text(stringResource(R.string.chat_hint)) },
-                modifier = Modifier
+            // Custom container: the stock OutlinedTextField pins a 48dp leading
+            // slot + 16dp content padding before the caret, which pushes the
+            // typing position away from the + button. BasicTextField inside a
+            // hand-drawn rounded border lets the caret start flush against the
+            // + (2dp breathing room), matching the user's ask.
+            val fieldFocused by interactionSource.collectIsFocusedAsState()
+            val fieldBorder =
+                if (fieldFocused) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outlineVariant
+            val fieldShape = RoundedCornerShape(20.dp)
+            Box(
+                Modifier
                     .weight(1f)
                     .heightIn(max = 160.dp)
-                    .focusRequester(focusRequester)
-                    // Enter sends; Shift+Enter inserts a newline. KeyDown is
-                    // swallowed so the newline never lands in the draft.
-                    .onPreviewKeyEvent { event ->
-                        if (event.key != Key.Enter || event.nativeKeyEvent.isShiftPressed) {
-                            return@onPreviewKeyEvent false
-                        }
-                        when (event.type) {
-                            KeyEventType.KeyDown -> true
-                            KeyEventType.KeyUp -> {
-                                submit()
-                                true
-                            }
-                            else -> false
-                        }
-                    },
-                maxLines = 6,
-                shape = RoundedCornerShape(20.dp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { submit() }),
-                leadingIcon = {
-                    // Tapping + swaps the keyboard for the action panel;
-                    // tapping again brings the keyboard back.
-                    IconButton(onClick = togglePanel) {
+                    .clip(fieldShape)
+                    .border(1.dp, fieldBorder, fieldShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 6.dp),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = togglePanel,
+                        modifier = Modifier.size(40.dp),
+                    ) {
                         Icon(
                             if (panelOpen) Icons.Default.Close else Icons.Default.Add,
                             contentDescription = stringResource(R.string.more),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
-                },
-                trailingIcon = {
+                    BasicTextField(
+                        value = text,
+                        onValueChange = onTextChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester)
+                            // Enter sends; Shift+Enter inserts a newline. KeyDown
+                            // is swallowed so the newline never lands in the draft.
+                            .onPreviewKeyEvent { event ->
+                                if (event.key != Key.Enter || event.nativeKeyEvent.isShiftPressed) {
+                                    return@onPreviewKeyEvent false
+                                }
+                                when (event.type) {
+                                    KeyEventType.KeyDown -> true
+                                    KeyEventType.KeyUp -> {
+                                        submit()
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        maxLines = 6,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { submit() }),
+                        interactionSource = interactionSource,
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (text.isEmpty()) {
+                                    Text(
+                                        stringResource(R.string.chat_hint),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        },
+                    )
                     if (running) {
                         IconButton(
                             onClick = onAbort,
@@ -321,9 +367,7 @@ fun ChatInput(
                             Icon(
                                 Icons.Default.Stop,
                                 contentDescription = stringResource(R.string.stop),
-                                // A bit bigger than the default so the stop
-                                // square reads clearly at a glance.
-                                modifier = Modifier.size(32.dp),
+                                modifier = Modifier.size(28.dp),
                             )
                         }
                     } else {
@@ -331,7 +375,7 @@ fun ChatInput(
                         FilledIconButton(
                             onClick = submit,
                             enabled = canSend,
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(36.dp),
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = if (canSend) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.surfaceVariant,
@@ -346,8 +390,8 @@ fun ChatInput(
                             )
                         }
                     }
-                },
-            )
+                }
+            }
         }
 
         // WeChat-style action panel: occupies exactly the keyboard height, so
@@ -483,24 +527,23 @@ private fun MorePanel(
 fun StreamingBubble(
     text: String,
     thinking: Boolean,
+    thinkingText: String,
     toolName: String?,
     toolSubtitle: String?,
     toolOutput: String,
     compacting: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    // Same card as a settled assistant message, so the live turn and the
-    // finished one read alike.
+    // pi-web stacks thinking / running tool / text as separate cards, so the
+    // live turn reads exactly like the settled one that follows it.
     Column(
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (compacting) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            StreamingStatusCard {
                 CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
                 Text(
                     "Compacting…",
@@ -511,56 +554,93 @@ fun StreamingBubble(
         }
 
         if (thinking && text.isBlank()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
-                Text(
-                    "Thinking…",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            // pi-web streaming thinking: shared thinking shell, clickable to
+            // reveal the live thinking text accumulated from thinking_delta.
+            StreamingThinkingCard(thinkingText)
+        }
+
+        if (toolName != null) {
+            // The running tool gets the same green tool-call card it will
+            // become when settled (pi-web). Open by default so live output
+            // streams in sight; tap the header to collapse.
+            StreamingToolCard(toolName, toolSubtitle, toolOutput)
         }
 
         if (text.isNotBlank()) {
             // Plain text while streaming — markdown is applied once the message
-            // settles, so the layout is not re-parsed on every frame.
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-        }
-
-        if (toolName != null) {
-            // One card only: the tool indicator is a plain row inside the
-            // bubble, not a nested box. Same 4dp top gap as the output below,
-            // so the running tool and its output share one rhythm.
-            Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // settles, so the layout is not re-parsed on every frame. Text keeps
+            // its own softer card (14dp, no border), like the settled text card.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
-                CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
-                Text(
-                    toolName,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 6.dp),
-                )
-                toolSubtitle?.let {
-                    Text(
-                        it,
-                        style = MonoStyle,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
-            if (toolOutput.isNotBlank()) {
-                Text(
-                    toolOutput.takeLast(LIVE_OUTPUT_TAIL),
-                    style = MonoStyle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+        }
+    }
+}
+
+/** Small assistant card for transient states (compacting). */
+@Composable
+private fun StreamingStatusCard(content: @Composable RowScope.() -> Unit) {
+    // Same breathing border as the running tool/thinking cards.
+    CardShell(breathing = true) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
+}
+
+/**
+ * pi-web running-tool card: the shared [ToolCallCard] open by default, so live
+ * partial output streams under the header; tap the header to collapse.
+ */
+@Composable
+private fun StreamingToolCard(toolName: String, toolSubtitle: String?, toolOutput: String) {
+    ToolCallCard(
+        name = toolName,
+        nameColor = ToolOkGreen,
+        subtitle = toolSubtitle,
+        borderColor = ToolOkBorder,
+        bgColor = ToolOkBg,
+        startsOpen = true,
+        breathing = true,
+    ) {
+        if (toolOutput.isNotBlank()) {
+            ToolDivider(ToolOkBorder)
+            Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                // Live output can run to megabytes; only the tail is worth
+                // streaming to the frame.
+                ScrollableCode(toolOutput.takeLast(LIVE_OUTPUT_TAIL))
             }
+        }
+    }
+}
+
+/**
+ * Streaming thinking card: the shared shell with a breathing border, clickable
+ * to expand the live thinking text (accumulated from thinking_delta events).
+ * Matches the settled ThinkingCard: header toggles, body below a hairline.
+ */
+@Composable
+private fun StreamingThinkingCard(thinkingText: String) {
+    var open by remember { mutableStateOf(false) }
+    ThinkingCardShell(breathing = true, onClick = { open = !open }) {
+        if (open && thinkingText.isNotBlank()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            Text(
+                thinkingText,
+                style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
         }
     }
 }

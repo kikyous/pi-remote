@@ -342,6 +342,7 @@ fun ChatScreen(
                             StreamingBubble(
                                 text = streaming.text,
                                 thinking = streaming.thinking,
+                                thinkingText = streaming.thinkingText,
                                 toolName = streaming.activeTool?.name,
                                 toolSubtitle = streaming.activeTool?.subtitle,
                                 toolOutput = streaming.activeTool?.partialOutput.orEmpty(),

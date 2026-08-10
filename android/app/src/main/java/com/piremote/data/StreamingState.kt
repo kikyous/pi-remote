@@ -13,6 +13,11 @@ data class StreamingState(
     val text: String = "",
     /** True once a thinking block has started, so the UI can show the label. */
     val thinking: Boolean = false,
+    /**
+     * Accumulated thinking text from `thinking_delta` events — the live body
+     * behind the expandable streaming thinking card.
+     */
+    val thinkingText: String = "",
     /** Tool currently executing, with whatever partial output has arrived. */
     val activeTool: ActiveTool? = null,
     /** Messages waiting behind the current turn. */

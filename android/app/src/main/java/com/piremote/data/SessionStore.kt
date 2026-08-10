@@ -101,14 +101,20 @@ class SessionStore(
     private var activeJob: Job? = null
 
     /**
-     * Text deltas are coalesced here and flushed on a timer.
+     * Deltas are coalesced here and flushed on a timer.
      *
      * A fast model emits well over a hundred deltas a second; writing each one
      * straight to state would recompose the bubble that many times and drop
      * frames. Buffering into one write per frame keeps it smooth.
      */
-    private val deltas = Channel<String>(Channel.UNLIMITED)
+    private sealed interface Delta {
+        data class Text(val value: String) : Delta
+        data class Thinking(val value: String) : Delta
+    }
+
+    private val deltas = Channel<Delta>(Channel.UNLIMITED)
     private val pendingText = StringBuilder()
+    private val pendingThinking = StringBuilder()
 
     init {
         scope.launch { runDeltaPump() }
@@ -365,7 +371,7 @@ class SessionStore(
 
             "message_start" -> {
                 flushDeltasNow()
-                _streaming.update { it.copy(text = "", thinking = false, activeTool = null) }
+                _streaming.update { it.copy(text = "", thinking = false, thinkingText = "", activeTool = null) }
             }
 
             "message_update" -> onDelta(event)
@@ -374,7 +380,7 @@ class SessionStore(
                 // The authoritative message lands as entry_appended; clearing
                 // here avoids briefly showing it twice.
                 flushDeltasNow()
-                _streaming.update { it.copy(text = "", thinking = false) }
+                _streaming.update { it.copy(text = "", thinking = false, thinkingText = "") }
             }
 
             "entry_appended" -> {
@@ -420,8 +426,11 @@ class SessionStore(
     private fun onDelta(event: JsonObject) {
         val inner = event["assistantMessageEvent"] as? JsonObject ?: return
         when (inner.str("type")) {
-            "text_delta" -> inner.str("delta")?.let { deltas.trySend(it) }
-            "thinking_start" -> _streaming.update { it.copy(thinking = true) }
+            "text_delta" -> inner.str("delta")?.let { deltas.trySend(Delta.Text(it)) }
+            // The SDK streams thinking as deltas too; accumulate them so the
+            // streaming thinking card can expand to the live content (pi-web).
+            "thinking_delta" -> inner.str("delta")?.let { deltas.trySend(Delta.Thinking(it)) }
+            "thinking_start" -> _streaming.update { it.copy(thinking = true, thinkingText = "") }
             "text_start" -> _streaming.update { it.copy(thinking = false) }
         }
     }
@@ -430,26 +439,40 @@ class SessionStore(
     private suspend fun runDeltaPump() {
         while (scope.isActive) {
             val first = deltas.receive()
-            pendingText.append(first)
+            collectDelta(first)
             // Sweep up anything that arrived in the same burst.
             while (true) {
                 val next = deltas.tryReceive().getOrNull() ?: break
-                pendingText.append(next)
+                collectDelta(next)
             }
             kotlinx.coroutines.delay(FLUSH_INTERVAL_MS)
             flushDeltasNow()
         }
     }
 
+    private fun collectDelta(delta: Delta) {
+        when (delta) {
+            is Delta.Text -> pendingText.append(delta.value)
+            is Delta.Thinking -> pendingThinking.append(delta.value)
+        }
+    }
+
     private fun flushDeltasNow() {
         while (true) {
             val next = deltas.tryReceive().getOrNull() ?: break
-            pendingText.append(next)
+            collectDelta(next)
         }
-        if (pendingText.isEmpty()) return
-        val chunk = pendingText.toString()
+        if (pendingText.isEmpty() && pendingThinking.isEmpty()) return
+        val textChunk = pendingText.toString().takeIf { it.isNotEmpty() }
         pendingText.setLength(0)
-        _streaming.update { it.copy(text = it.text + chunk) }
+        val thinkingChunk = pendingThinking.toString().takeIf { it.isNotEmpty() }
+        pendingThinking.setLength(0)
+        _streaming.update { current ->
+            current.copy(
+                text = if (textChunk != null) current.text + textChunk else current.text,
+                thinkingText = if (thinkingChunk != null) current.thinkingText + thinkingChunk else current.thinkingText,
+            )
+        }
     }
 
     private fun appendItem(item: ChatItem) {

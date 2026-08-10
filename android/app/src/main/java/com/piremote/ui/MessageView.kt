@@ -2,7 +2,12 @@ package com.piremote.ui
 
 import com.piremote.R
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -180,6 +187,8 @@ private fun AssistantBlock(
         }
 
         if (item.text.isNotBlank() || item.error != null) {
+            // Text keeps its own softer card (14dp, no border) — it is a body
+            // of prose, not a structured block, and pairs with the user bubble.
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -290,13 +299,15 @@ private fun EditDiffView(diff: EditDiff, modifier: Modifier = Modifier) {
 }
 
 // pi-web tool-call palette (dark): green = call ran, red = call errored.
-// Ported from pi-web's CSS (--accent green / --error red tints).
-private val ToolOkGreen = Color(0xFF16A34A)
-private val ToolErrRed = Color(0xFFF87171)
-private val ToolOkBorder = Color(0x4022C55E) // rgba(34,197,94,0.25)
-private val ToolOkBg = Color(0x0A22C55E) // rgba(34,197,94,0.04)
-private val ToolErrBorder = Color(0x73F87171) // rgba(248,113,113,0.45)
-private val ToolErrBg = Color(0x0DF87171) // rgba(248,113,113,0.05)
+// Ported from pi-web's CSS (--accent green / --error red tints). Shared with
+// the streaming tool card in ChatInput.kt so a running call reads exactly
+// like the settled card it becomes.
+internal val ToolOkGreen = Color(0xFF16A34A)
+internal val ToolErrRed = Color(0xFFF87171)
+internal val ToolOkBorder = Color(0x4022C55E) // rgba(34,197,94,0.25)
+internal val ToolOkBg = Color(0x0A22C55E) // rgba(34,197,94,0.04)
+internal val ToolErrBorder = Color(0x73F87171) // rgba(248,113,113,0.45)
+internal val ToolErrBg = Color(0x0DF87171) // rgba(248,113,113,0.05)
 
 @Composable
 private fun ToolCallsCard(
@@ -329,35 +340,16 @@ private fun ThinkingCard(
 ) {
     var open by remember { mutableStateOf(false) }
     val full = truncation?.let { expanded[it.key()] }
-    val shape = RoundedCornerShape(8.dp)
 
     // pi-web thinking card: neutral bordered card, plain "Thinking" header
     // (no chevron), body below a hairline divider.
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), shape),
+    ThinkingCardShell(
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        onClick = {
+            open = !open
+            if (open && truncation != null && full == null) onExpand(truncation)
+        },
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-                    open = !open
-                    if (open && truncation != null && full == null) onExpand(truncation)
-                }
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "Thinking",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         if (open) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             Text(
@@ -382,22 +374,126 @@ private fun ToolCallRow(
     expanded: Map<String, String>,
     onExpand: (Truncation) -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
     val result = call.result
     val error = result?.isError == true
     val borderColor = if (error) ToolErrBorder else ToolOkBorder
-    val shape = RoundedCornerShape(8.dp)
-    val rotation by animateFloatAsState(if (open) 180f else 0f, label = "tool-chevron")
 
-    // Pin the message's top on expand so growth pushes newer messages DOWN
-    // instead of shoving older ones up (reverseLayout anchors the newest end).
-    // See ThinkingCard for the same compensation.
+    ToolCallCard(
+        name = call.name,
+        nameColor = if (error) ToolErrRed else ToolOkGreen,
+        subtitle = call.subtitle,
+        borderColor = borderColor,
+        bgColor = if (error) ToolErrBg else ToolOkBg,
+    ) {
+        val diff = call.diff
+        if (diff == null && call.arguments.isNotBlank()) {
+            // JSON arguments, pi-web style: pre-wrap, dim mono, subtle bg,
+            // hairline divider in the card's tint.
+            ToolDivider(borderColor)
+            Text(
+                call.arguments,
+                style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
+        }
+        if (diff != null) {
+            ToolDivider(borderColor)
+            EditDiffView(diff, Modifier.padding(vertical = 4.dp))
+        }
+        call.truncation?.let { ExpandRow(it, expanded, onExpand) }
+        if (result != null) {
+            ToolDivider(borderColor)
+            Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                ToolResultBody(result, expanded, onExpand)
+            }
+        }
+    }
+}
+
+/**
+ * Hairline separator between a tool call's sections, tinted like the card.
+ */
+@Composable
+internal fun ToolDivider(color: Color) {
+    HorizontalDivider(color = color)
+}
+
+/**
+ * Pulsing border color for running cards. The border alpha breathes up and
+ * back (pi-web's pulse rhythm), so a running tool / thinking / compaction
+ * reads as alive without a spinner. Settled cards pass `breathing = false`
+ * and keep their static border.
+ */
+@Composable
+internal fun rememberBreathingColor(base: Color): Color {
+    val transition = rememberInfiniteTransition(label = "card-breathe")
+    val alpha by transition.animateFloat(
+        initialValue = base.alpha,
+        targetValue = (base.alpha + 0.55f).coerceAtMost(1f),
+        animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
+        label = "card-breathe-alpha",
+    )
+    return base.copy(alpha = alpha)
+}
+
+/**
+ * One card container for every assistant-side block — thinking, tool calls,
+ * bash, results, transient states and text. Neutral by default; tool calls
+ * tint it via [background]/[border]; running states breathe via [breathing].
+ * Headers and bodies are just content.
+ */
+@Composable
+internal fun CardShell(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(8.dp),
+    background: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    border: Color? = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+    breathing: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val borderColor = if (border != null) {
+        if (breathing) rememberBreathingColor(border) else border
+    } else null
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(if (error) ToolErrBg else ToolOkBg)
-            .border(1.dp, borderColor, shape),
+            .background(background)
+            .then(if (borderColor != null) Modifier.border(1.dp, borderColor, shape) else Modifier),
+    ) { content() }
+}
+
+/**
+ * pi-web tool-call card: tinted border/background, mono tool name, argument
+ * preview and a rotating chevron. Shared by settled tool calls, bash
+ * executions and the live streaming card, so a running call looks identical
+ * to the card it becomes. [startsOpen] lets the streaming card surface live
+ * output by default; settled cards collapse.
+ */
+@Composable
+internal fun ToolCallCard(
+    name: String,
+    nameColor: Color,
+    borderColor: Color,
+    bgColor: Color,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    startsOpen: Boolean = false,
+    breathing: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit = {},
+) {
+    var open by remember { mutableStateOf(startsOpen) }
+    val rotation by animateFloatAsState(if (open) 180f else 0f, label = "tool-card-chevron")
+
+    CardShell(
+        modifier = modifier,
+        background = bgColor,
+        border = borderColor,
+        breathing = breathing,
     ) {
         Row(
             Modifier
@@ -409,13 +505,13 @@ private fun ToolCallRow(
         ) {
             // Tool name in green/red (pi-web: mono, semi-bold, tinted by state).
             Text(
-                call.name,
+                name,
                 style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold),
-                color = if (error) ToolErrRed else ToolOkGreen,
+                color = nameColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            call.subtitle?.let {
+            subtitle?.let {
                 Text(
                     it.compactForRow(),
                     style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 16.sp),
@@ -436,44 +532,39 @@ private fun ToolCallRow(
                 modifier = Modifier.rotate(rotation).size(16.dp),
             )
         }
-
-        if (open) {
-            val diff = call.diff
-            if (diff == null && call.arguments.isNotBlank()) {
-                // JSON arguments, pi-web style: pre-wrap, dim mono, subtle bg,
-                // hairline divider in the card's tint.
-                ToolDivider(borderColor)
-                Text(
-                    call.arguments,
-                    style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                )
-            }
-            if (diff != null) {
-                ToolDivider(borderColor)
-                EditDiffView(diff, Modifier.padding(vertical = 4.dp))
-            }
-            call.truncation?.let { ExpandRow(it, expanded, onExpand) }
-            if (result != null) {
-                ToolDivider(borderColor)
-                Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    ToolResultBody(result, expanded, onExpand)
-                }
-            }
-        }
+        if (open) content()
     }
 }
 
 /**
- * Hairline separator between a tool call's sections, tinted like the card.
+ * pi-web thinking card: neutral bordered card with a plain "Thinking" header
+ * (no chevron). The streaming turn shows just the shell; the settled card
+ * adds an expandable body below the hairline divider.
  */
 @Composable
-private fun ToolDivider(color: Color) {
-    HorizontalDivider(color = color)
+internal fun ThinkingCardShell(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    breathing: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit = {},
+) {
+    CardShell(modifier = modifier, breathing = breathing) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Thinking",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        content()
+    }
 }
 
 
@@ -484,22 +575,15 @@ private fun ToolResultBlock(
     onExpand: (Truncation) -> Unit,
     modifier: Modifier,
 ) {
-    val shape = RoundedCornerShape(8.dp)
-    Column(
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), shape)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-    ) {
-        Text(
-            result.toolName.ifBlank { stringResource(R.string.tool_result) },
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        ToolResultBody(result, expanded, onExpand)
+    CardShell(modifier = modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(
+                result.toolName.ifBlank { stringResource(R.string.tool_result) },
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ToolResultBody(result, expanded, onExpand)
+        }
     }
 }
 
@@ -532,60 +616,25 @@ private fun BashBlock(
     onExpand: (Truncation) -> Unit,
     modifier: Modifier,
 ) {
-    var open by remember { mutableStateOf(false) }
     val full = item.truncation?.let { expanded[it.key()] }
     val error = (item.exitCode ?: 0) != 0
     val borderColor = if (error) ToolErrBorder else ToolOkBorder
-    val shape = RoundedCornerShape(8.dp)
-    val rotation by animateFloatAsState(if (open) 180f else 0f, label = "bash-chevron")
 
     // pi-web renders bash executions as tool-call cards: tinted border, mono
     // green/red "bash" name, command preview, collapsible output.
-    Column(
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(shape)
-            .background(if (error) ToolErrBg else ToolOkBg)
-            .border(1.dp, borderColor, shape),
+    ToolCallCard(
+        name = "bash",
+        nameColor = if (error) ToolErrRed else ToolOkGreen,
+        subtitle = item.command,
+        borderColor = borderColor,
+        bgColor = if (error) ToolErrBg else ToolOkBg,
+        modifier = modifier,
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { open = !open }
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            Text(
-                "bash",
-                style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold),
-                color = if (error) ToolErrRed else ToolOkGreen,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                item.command.compactForRow(),
-                style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                Icons.Default.ExpandMore,
-                contentDescription = if (open) stringResource(R.string.collapse) else stringResource(R.string.expand),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.rotate(rotation).size(16.dp),
-            )
+        ToolDivider(borderColor)
+        Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            ScrollableCode(full ?: item.output, error = error)
         }
-        if (open) {
-            ToolDivider(borderColor)
-            Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                ScrollableCode(full ?: item.output, error = error)
-            }
-            if (full == null) item.truncation?.let { ExpandRow(it, expanded, onExpand) }
-        }
+        if (full == null) item.truncation?.let { ExpandRow(it, expanded, onExpand) }
     }
 }
 
@@ -692,7 +741,7 @@ private fun ZoomableImageDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
  * block scrolls within itself.
  */
 @Composable
-private fun ScrollableCode(text: String, error: Boolean = false) {
+internal fun ScrollableCode(text: String, error: Boolean = false) {
     // pi-web output block: 12px mono, line-height 1.5, pre-wrap (soft wraps long
     // lines instead of scrolling horizontally), capped at 400dp with internal
     // vertical scroll. Error text uses the card's red for consistency.
@@ -729,7 +778,7 @@ private fun ExpandRow(truncation: Truncation, expanded: Map<String, String>, onE
  * is generous because the row's own ellipsis handles narrow screens; this only
  * avoids shipping megabytes of args over a header.
  */
-private fun String.compactForRow(): String {
+internal fun String.compactForRow(): String {
     val flat = replace('\n', ' ').trim()
     if (flat.length <= ROW_ARG_LIMIT) return flat
     if (flat.contains('/')) {
