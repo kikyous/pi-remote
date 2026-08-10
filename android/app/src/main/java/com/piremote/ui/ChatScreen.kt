@@ -1,5 +1,10 @@
 package com.piremote.ui
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,6 +63,7 @@ import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+
 
 /**
  * One session's conversation.
@@ -112,21 +119,39 @@ fun ChatScreen(
 
     // Keep the newest content in view as it streams in, but only when the user
     // is already at the bottom — never yank them away from what they scrolled to.
-    val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex <= 1 } }
+    // Forward layout: the newest message is the LAST item.
+    val atBottom by remember { derivedStateOf {
+        val total = listState.layoutInfo.totalItemsCount
+        total > 0 && listState.firstVisibleItemIndex >= total - 2
+    } }
+    // Forward layout starts at the top, so jump to the newest end when a session
+    // first loads (before any user interaction).
+    var initialScrollDone by remember(store) { mutableStateOf(false) }
+    LaunchedEffect(state.items.size, store) {
+        if (!initialScrollDone && state.items.isNotEmpty()) {
+            initialScrollDone = true
+            val loaderOffset = if (state.hasMore) 1 else 0
+            listState.scrollToItem(loaderOffset + state.items.size - 1)
+        }
+    }
     // Key on the whole streaming state, not just the text: during a tool run
     // (bash etc.) the bubble grows via activeTool.partialOutput while text stays
     // unchanged — with narrower keys the effect would never re-run and the new
     // output would pile up below the fold until the user pulls it into view.
     LaunchedEffect(streaming, state.items.size) {
-        if (atBottom) listState.animateScrollToItem(0)
+        if (atBottom) {
+            val loaderOffset = if (state.hasMore) 1 else 0
+            val streamOffset = if (streaming.hasContent || streaming.compacting) 1 else 0
+            listState.animateScrollToItem(loaderOffset + state.items.size + streamOffset - 1)
+        }
     }
 
     // Fetch the previous page as the top of the loaded range comes into view.
+    // Forward layout: older messages live at the START (low indices).
     val shouldLoadOlder by remember(listState) {
         derivedStateOf {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val total = listState.layoutInfo.totalItemsCount
-            total > 0 && last >= total - PREFETCH_DISTANCE
+            val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
+            first <= PREFETCH_DISTANCE
         }
     }
     LaunchedEffect(store, listState) {
@@ -272,33 +297,9 @@ fun ChatScreen(
                     // stuck when tapping another. A single scope clears it.
                     LazyColumn(
                         state = listState,
-                        reverseLayout = true,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
                     ) {
-                    if (streaming.hasContent || streaming.compacting) {
-                        item(key = "streaming") {
-                            StreamingBubble(
-                                text = streaming.text,
-                                thinking = streaming.thinking,
-                                toolName = streaming.activeTool?.name,
-                                toolSubtitle = streaming.activeTool?.subtitle,
-                                toolOutput = streaming.activeTool?.partialOutput.orEmpty(),
-                                compacting = streaming.compacting,
-                            )
-                        }
-                    }
-
-                    // reverseLayout renders index 0 at the bottom, so the newest
-                    // item must come first.
-                    items(state.items.asReversed(), key = { it.entryId }) { item ->
-                        MessageView(
-                            item = item,
-                            expanded = state.expanded,
-                            onExpand = store::expand,
-                        )
-                    }
-
                     if (state.hasMore) {
                         item(key = "older-loader") {
                             Row(
@@ -315,6 +316,43 @@ fun ChatScreen(
                             }
                         }
                     }
+
+                    // Forward layout: oldest first, newest at the end. Expanding
+                    // a mid-chat card then naturally pushes newer messages DOWN
+                    // (top-anchored) — no scroll compensation needed at all.
+                    // animateItem placement-only: fades would play when the older
+                    // page is prepended at the top (items fading in mid-scroll).
+                    items(state.items, key = { it.entryId }) { item ->
+                        MessageView(
+                            item = item,
+                            expanded = state.expanded,
+                            onExpand = store::expand,
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(durationMillis = 0),
+                                fadeOutSpec = tween(durationMillis = 0),
+                            ),
+                        )
+                    }
+
+                    if (streaming.hasContent || streaming.compacting) {
+                        item(key = "streaming") {
+                            StreamingBubble(
+                                text = streaming.text,
+                                thinking = streaming.thinking,
+                                toolName = streaming.activeTool?.name,
+                                toolSubtitle = streaming.activeTool?.subtitle,
+                                toolOutput = streaming.activeTool?.partialOutput.orEmpty(),
+                                compacting = streaming.compacting,
+                            )
+                        }
+                    }
+
+                    // pi-web's waiting hint: while the agent runs but has not
+                    // produced any content yet (before the first token / thinking
+                    // / tool card), show a pulsing line instead of empty space.
+                    if (streaming.running && !streaming.hasContent && !streaming.compacting) {
+                        item(key = "waiting-pulse") { WaitingPulseLine() }
+                    }
                     }
                 }
             }
@@ -324,6 +362,33 @@ fun ChatScreen(
 
 /** How close to the loaded top to get before fetching the next page. */
 private const val PREFETCH_DISTANCE = 8
+
+/**
+ * pi-web's "Waiting for model..." — a pulsing text line at the bottom of the
+ * list while the agent runs but has not produced any content yet. Pulse is
+ * opacity 1 → 0.5 over 1.5s (Tailwind animate-pulse), text 13px muted.
+ */
+@Composable
+private fun WaitingPulseLine() {
+    val transition = rememberInfiniteTransition(label = "waiting-pulse")
+    val alpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 750),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "waiting-pulse-alpha",
+    )
+    Text(
+        "正在等待模型...",
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp, horizontal = 16.dp),
+    )
+}
 
 /**
  * Read a picked image and turn it into a [PromptImage].
