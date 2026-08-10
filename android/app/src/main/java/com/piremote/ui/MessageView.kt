@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,18 +42,25 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
@@ -200,27 +208,10 @@ private fun AssistantBlock(
                 if (item.text.isNotBlank()) {
                     // Settled messages are fully parsed: code blocks, tables and
                     // links read properly. The streaming bubble stays plain.
-                    // Heading sizes are pinned to GitHub-like proportions — the
-                    // library's M3 defaults map h1 to 57sp displayLarge.
-                    val mdTypography = markdownTypography(
-                        h1 = heading(28.sp, FontWeight.Bold),
-                        h2 = heading(22.sp, FontWeight.Bold),
-                        h3 = heading(19.sp, FontWeight.Bold),
-                        h4 = heading(16.sp, FontWeight.Bold),
-                        h5 = heading(14.sp, FontWeight.Bold),
-                        h6 = heading(13.sp, FontWeight.Bold, muted = true),
-                        paragraph = TextStyle(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp,
-                        ),
-                    )
                     Markdown(
                         item.text,
-                        typography = mdTypography,
-                        // Content-adaptive table columns instead of the library's
-                        // fixed per-column width.
-                        components = markdownComponents(table = { model -> AdaptiveMarkdownTable(model) }),
+                        typography = LocalMarkdownTypography.current,
+                        components = ChatMarkdownComponents,
                     )
                 }
 
@@ -252,16 +243,45 @@ private fun AssistantBlock(
     }
 }
 
-/** One card for the whole tool segment of a turn; each call folds to a header row. */
-/** GitHub-like heading text style: body-relative sizes, bold, on-surface. */
+/**
+ * Markdown styling for a settled assistant reply.
+ *
+ * Heading sizes are pinned to GitHub-like proportions — the library's M3
+ * defaults map h1 to 57sp displayLarge, which reads as a banner inside a chat
+ * card. Built once by [PiRemoteTheme] and handed down as
+ * [LocalMarkdownTypography]: it is composable (the styles left unspecified
+ * come from MaterialTheme) so it cannot be remembered at the call site, and
+ * per-message it allocated a dozen text styles for every reply on screen.
+ */
 @Composable
-private fun heading(size: TextUnit, weight: FontWeight, muted: Boolean = false): TextStyle =
-    TextStyle(
-        color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant
-        else MaterialTheme.colorScheme.onSurface,
-        fontSize = size,
-        fontWeight = weight,
-    )
+internal fun chatMarkdownTypography(colors: ColorScheme = MaterialTheme.colorScheme) = markdownTypography(
+    h1 = heading(colors, 28.sp, FontWeight.Bold),
+    h2 = heading(colors, 22.sp, FontWeight.Bold),
+    h3 = heading(colors, 19.sp, FontWeight.Bold),
+    h4 = heading(colors, 16.sp, FontWeight.Bold),
+    h5 = heading(colors, 14.sp, FontWeight.Bold),
+    h6 = heading(colors, 13.sp, FontWeight.Bold, muted = true),
+    paragraph = TextStyle(color = colors.onSurface, fontSize = 15.sp, lineHeight = 22.sp),
+)
+
+/** GitHub-like heading text style: body-relative sizes, bold, on-surface. */
+private fun heading(
+    colors: ColorScheme,
+    size: TextUnit,
+    weight: FontWeight,
+    muted: Boolean = false,
+): TextStyle = TextStyle(
+    color = if (muted) colors.onSurfaceVariant else colors.onSurface,
+    fontSize = size,
+    fontWeight = weight,
+)
+
+/**
+ * Content-adaptive table columns instead of the library's fixed per-column
+ * width. Theme-independent, so one instance serves every message.
+ */
+private val ChatMarkdownComponents =
+    markdownComponents(table = { model -> AdaptiveMarkdownTable(model) })
 
 /**
  * Render an edit call's oldText/newText as a unified diff.
@@ -326,7 +346,12 @@ private fun ToolCallsCard(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         calls.forEach { call ->
-            ToolCallRow(call, entryId, expanded, onExpand)
+            // key(): each card's saved open/closed state is scoped by position,
+            // so without it the cards of one turn would share a slot and swap
+            // state whenever the call list shifts.
+            key(call.id) {
+                ToolCallRow(call, entryId, expanded, onExpand)
+            }
         }
     }
 }
@@ -338,7 +363,11 @@ private fun ThinkingCard(
     expanded: Map<String, String>,
     onExpand: (Truncation) -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
+    // Saveable, not remembered: a LazyColumn item that scrolls out of view is
+    // disposed, and a plain remember would re-collapse the card behind the
+    // user's back. The list keys items by entryId, which scopes the saved
+    // state to this message.
+    var open by rememberSaveable { mutableStateOf(false) }
     val full = truncation?.let { expanded[it.key()] }
 
     // pi-web thinking card: neutral bordered card, plain "Thinking" header
@@ -404,7 +433,11 @@ private fun ToolCallRow(
             ToolDivider(borderColor)
             EditDiffView(diff, Modifier.padding(vertical = 4.dp))
         }
-        call.truncation?.let { ExpandRow(it, expanded, onExpand) }
+        // Inside the card's own padding: the body sections below carry theirs
+        // via the Box wrapper, this row sits directly in the card column.
+        call.truncation?.let {
+            ExpandRow(it, expanded, onExpand, Modifier.padding(start = 10.dp, end = 10.dp, bottom = 6.dp))
+        }
         if (result != null) {
             ToolDivider(borderColor)
             Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
@@ -423,21 +456,43 @@ internal fun ToolDivider(color: Color) {
 }
 
 /**
- * Pulsing border color for running cards. The border alpha breathes up and
- * back (pi-web's pulse rhythm), so a running tool / thinking / compaction
- * reads as alive without a spinner. Settled cards pass `breathing = false`
- * and keep their static border.
+ * Pulsing 1dp border for running cards. The border alpha breathes up and back
+ * (pi-web's pulse rhythm), so a running tool / thinking / compaction reads as
+ * alive without a spinner. Settled cards keep a static [Modifier.border].
+ *
+ * The animated alpha is read inside the draw lambda, never during composition.
+ * Reading it as a plain value would restart [CardShell] on every animation
+ * frame, and because `Column` is inline that drags the card's whole subtree —
+ * text measurement included — through recomposition ~60 times a second while a
+ * tool streams output.
  */
 @Composable
-internal fun rememberBreathingColor(base: Color): Color {
+private fun Modifier.breathingBorder(base: Color, shape: Shape): Modifier {
     val transition = rememberInfiniteTransition(label = "card-breathe")
-    val alpha by transition.animateFloat(
+    val alpha = transition.animateFloat(
         initialValue = base.alpha,
         targetValue = (base.alpha + 0.55f).coerceAtMost(1f),
         animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
         label = "card-breathe-alpha",
     )
-    return base.copy(alpha = alpha)
+    return drawWithCache {
+        // Inset by half the stroke, the way Modifier.border does: centred on
+        // the bounds, the outer half would fall outside the clip and the line
+        // would render at half its width.
+        val stroke = 1.dp.toPx()
+        val outline = shape.createOutline(
+            Size(size.width - stroke, size.height - stroke),
+            layoutDirection,
+            this,
+        )
+        val style = Stroke(stroke)
+        onDrawWithContent {
+            drawContent()
+            translate(stroke / 2, stroke / 2) {
+                drawOutline(outline, color = base.copy(alpha = alpha.value), style = style)
+            }
+        }
+    }
 }
 
 /**
@@ -455,15 +510,17 @@ internal fun CardShell(
     breathing: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val borderColor = if (border != null) {
-        if (breathing) rememberBreathingColor(border) else border
-    } else null
+    val borderModifier = when {
+        border == null -> Modifier
+        breathing -> Modifier.breathingBorder(border, shape)
+        else -> Modifier.border(1.dp, border, shape)
+    }
     Column(
         modifier
             .fillMaxWidth()
             .clip(shape)
             .background(background)
-            .then(if (borderColor != null) Modifier.border(1.dp, borderColor, shape) else Modifier),
+            .then(borderModifier),
     ) { content() }
 }
 
@@ -473,6 +530,10 @@ internal fun CardShell(
  * executions and the live streaming card, so a running call looks identical
  * to the card it becomes. [startsOpen] lets the streaming card surface live
  * output by default; settled cards collapse.
+ *
+ * Open/closed is saveable so it survives the card scrolling out of the list.
+ * Siblings are told apart by position, so a caller rendering several of these
+ * in a loop must wrap each in `key(id)`.
  */
 @Composable
 internal fun ToolCallCard(
@@ -486,8 +547,11 @@ internal fun ToolCallCard(
     breathing: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-    var open by remember { mutableStateOf(startsOpen) }
+    var open by rememberSaveable { mutableStateOf(startsOpen) }
     val rotation by animateFloatAsState(if (open) 180f else 0f, label = "tool-card-chevron")
+    // A streaming card's subtitle is stable while its output grows; shortening
+    // it once per value keeps the allocation off the recomposition path.
+    val compactSubtitle = remember(subtitle) { subtitle?.compactForRow() }
 
     CardShell(
         modifier = modifier,
@@ -511,9 +575,9 @@ internal fun ToolCallCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            subtitle?.let {
+            compactSubtitle?.let {
                 Text(
-                    it.compactForRow(),
+                    it,
                     style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 16.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -557,7 +621,7 @@ internal fun ThinkingCardShell(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Thinking",
+                stringResource(R.string.card_thinking),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -760,13 +824,18 @@ internal fun ScrollableCode(text: String, error: Boolean = false) {
 }
 
 @Composable
-private fun ExpandRow(truncation: Truncation, expanded: Map<String, String>, onExpand: (Truncation) -> Unit) {
+private fun ExpandRow(
+    truncation: Truncation,
+    expanded: Map<String, String>,
+    onExpand: (Truncation) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     if (expanded.containsKey(truncation.key())) return
     Text(
         stringResource(R.string.tool_expand_all, truncation.displaySize),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.clickable { onExpand(truncation) }.padding(top = 4.dp),
+        modifier = modifier.clickable { onExpand(truncation) }.padding(top = 4.dp),
     )
 }
 

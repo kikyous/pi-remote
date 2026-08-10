@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -65,6 +67,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 
 
@@ -120,33 +123,62 @@ fun ChatScreen(
         onDispose { onUnfollow(store.sessionId) }
     }
 
-    // Keep the newest content in view as it streams in, but only when the user
-    // is already at the bottom — never yank them away from what they scrolled to.
-    // Forward layout: the newest message is the LAST item.
-    val atBottom by remember { derivedStateOf {
-        val total = listState.layoutInfo.totalItemsCount
-        total > 0 && listState.firstVisibleItemIndex >= total - 2
-    } }
-    // Forward layout starts at the top, so jump to the newest end when a session
-    // first loads (before any user interaction).
-    var initialScrollDone by remember(store) { mutableStateOf(false) }
-    LaunchedEffect(state.items.size, store) {
-        if (!initialScrollDone && state.items.isNotEmpty()) {
-            initialScrollDone = true
-            val loaderOffset = if (state.hasMore) 1 else 0
-            listState.scrollToItem(loaderOffset + state.items.size - 1)
+    // Whether the list should keep itself pinned to the newest content.
+    //
+    // Only a scroll the user actually drove may change it. Deciding from the
+    // layout instead would get this wrong twice: the viewport shrinks under the
+    // list whenever the composer pads up for the keyboard, and settling a last
+    // item taller than the screen takes two passes — both leave the bottom out
+    // of sight for a moment with the user's finger nowhere near the screen, and
+    // both would read as "they scrolled away".
+    var stick by remember(store) { mutableStateOf(true) }
+    LaunchedEffect(listState, store) {
+        var userDriven = false
+        launch {
+            listState.interactionSource.interactions.collect {
+                if (it is DragInteraction.Start) userDriven = true
+            }
         }
+        snapshotFlow { listState.isScrollInProgress }
+            .drop(1) // the initial idle state is not a settled scroll
+            .filter { !it }
+            .collect {
+                if (userDriven) {
+                    userDriven = false
+                    stick = !listState.canScrollForward
+                }
+            }
     }
-    // Key on the whole streaming state, not just the text: during a tool run
-    // (bash etc.) the bubble grows via activeTool.partialOutput while text stays
-    // unchanged — with narrower keys the effect would never re-run and the new
-    // output would pile up below the fold until the user pulls it into view.
-    LaunchedEffect(streaming, state.items.size) {
-        if (atBottom) {
-            val loaderOffset = if (state.hasMore) 1 else 0
-            val streamOffset = if (streaming.hasContent || streaming.compacting) 1 else 0
-            listState.animateScrollToItem(loaderOffset + state.items.size + streamOffset - 1)
+
+    // One effect for every way the newest content can leave the viewport: the
+    // first page landing, a message arriving, the streaming card growing, the
+    // keyboard shrinking the list.
+    //
+    // The trigger is read from the layout, not from the state that caused it,
+    // because the correction has to run *after* the layout it corrects. An
+    // effect keyed on the item list or on the IME inset runs between
+    // composition and measure: the list is still its old height, so one already
+    // at the bottom has no room left to scroll and the correction is silently
+    // dropped — which is how the newest messages ended up behind the keyboard.
+    //
+    // Only quantities that scrolling cannot change are sampled. Watching the
+    // layout as a whole feeds the scroll back into its own trigger, and one
+    // scroll that lands slightly short then spins forever, forcing a synchronous
+    // remeasure per frame until the UI locks up.
+    LaunchedEffect(listState, store) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val lastIndex = info.totalItemsCount - 1
+            Triple(
+                info.viewportSize.height,
+                info.totalItemsCount,
+                // Height of the newest item, once it is on screen: this is what
+                // grows while a reply streams in. Scrolling does not change it.
+                info.visibleItemsInfo.lastOrNull()?.takeIf { it.index == lastIndex }?.size ?: 0,
+            )
         }
+            .distinctUntilChanged()
+            .collect { if (stick) listState.scrollToBottom() }
     }
 
     // Fetch the previous page as the top of the loaded range comes into view.
@@ -366,6 +398,31 @@ fun ChatScreen(
 
 /** How close to the loaded top to get before fetching the next page. */
 private const val PREFETCH_DISTANCE = 8
+
+/**
+ * Scroll so the end of the last item rests against the bottom of the viewport.
+ *
+ * [LazyListState.scrollToItem] alone is not enough: it aligns the item's *top*
+ * with the top of the viewport, and the last item here is regularly taller than
+ * the screen — a long tool card or a streaming reply. Landing on its head would
+ * show the oldest part of exactly the content the user is waiting to read, so
+ * whatever hangs past the bottom is scrolled away in a second pass.
+ */
+private suspend fun LazyListState.scrollToBottom() {
+    val lastIndex = layoutInfo.totalItemsCount - 1
+    if (lastIndex < 0) return
+    // Short of the end the list clamps this to its last scroll position, which
+    // is already the bottom alignment for an item that fits on screen.
+    scrollToItem(lastIndex)
+    // scrollToItem forces a remeasure, so layoutInfo is current here. Measure
+    // the overhang directly rather than deriving it from the viewport bounds:
+    // getting that arithmetic wrong leaves the list a few pixels short, and
+    // "short" is indistinguishable from "needs scrolling" on the next pass.
+    val last = layoutInfo.visibleItemsInfo.lastOrNull() ?: return
+    if (last.index != lastIndex) return
+    val overhang = last.offset + last.size - layoutInfo.viewportEndOffset
+    if (overhang > 0) scroll { scrollBy(overhang.toFloat()) }
+}
 
 /**
  * pi-web's "Waiting for model..." — a pulsing text line at the bottom of the

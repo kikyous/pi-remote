@@ -9,7 +9,10 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.mikepenz.markdown.model.MarkdownTypography
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -42,6 +45,17 @@ private val LightColors = lightColorScheme(
 /** Tool output, code, and streaming text all need a monospace face. */
 val MonoStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 19.sp)
 
+/**
+ * Markdown styling for assistant replies, carried alongside the colour scheme.
+ *
+ * It belongs to the theme rather than to each message: it depends on nothing
+ * but the scheme, and building it per message put a dozen text-style
+ * allocations on the scroll path.
+ */
+val LocalMarkdownTypography = staticCompositionLocalOf<MarkdownTypography> {
+    error("LocalMarkdownTypography read outside PiRemoteTheme")
+}
+
 @Composable
 fun PiRemoteTheme(content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
@@ -52,5 +66,12 @@ fun PiRemoteTheme(content: @Composable () -> Unit) {
         dark -> DarkColors
         else -> LightColors
     }
-    MaterialTheme(colorScheme = scheme, typography = Typography(), content = content)
+    MaterialTheme(colorScheme = scheme, typography = Typography()) {
+        // Inside MaterialTheme so it reads the scheme just applied, and only
+        // rebuilt when that scheme changes.
+        CompositionLocalProvider(
+            LocalMarkdownTypography provides chatMarkdownTypography(),
+            content = content,
+        )
+    }
 }

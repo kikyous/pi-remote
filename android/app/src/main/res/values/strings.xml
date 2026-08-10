@@ -60,6 +60,8 @@
     <string name="empty_session_title">(empty session)</string>
 
     <!-- Tool cards -->
+    <string name="card_thinking">Thinking</string>
+    <string name="card_compacting">Compacting…</string>
     <string name="tool_result">Tool result</string>
     <string name="tool_image_truncated">［image, %1$s］</string>
     <string name="tool_expand_all">Show all (%1$s)</string>

@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -547,7 +548,7 @@ fun StreamingBubble(
             StreamingStatusCard {
                 CircularProgressIndicator(Modifier.padding(horizontal = 6.dp).size(12.dp), strokeWidth = 2.dp)
                 Text(
-                    "Compacting…",
+                    stringResource(R.string.card_compacting),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -631,7 +632,9 @@ private fun StreamingToolCard(toolName: String, toolSubtitle: String?, toolOutpu
  */
 @Composable
 private fun StreamingThinkingCard(thinkingText: String) {
-    var open by remember { mutableStateOf(false) }
+    // Saveable so scrolling the live card out of the list and back does not
+    // fold the thinking body the user just opened.
+    var open by rememberSaveable { mutableStateOf(false) }
     ThinkingCardShell(breathing = true, onClick = { open = !open }) {
         if (open && thinkingText.isNotBlank()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
