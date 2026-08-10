@@ -136,13 +136,22 @@ fun ChatScreen(
         var userDriven = false
         launch {
             listState.interactionSource.interactions.collect {
-                if (it is DragInteraction.Start) userDriven = true
+                if (it is DragInteraction.Start) {
+                    userDriven = true
+                    // Drop the follow the instant a finger takes hold, not when
+                    // the scroll finally settles. Flinging up pulls the newest
+                    // item off screen, which moves the trigger below; waiting
+                    // for the fling to end leaves a window where that trigger
+                    // still sees stick == true and yanks the list back down.
+                    stick = false
+                }
             }
         }
         snapshotFlow { listState.isScrollInProgress }
             .drop(1) // the initial idle state is not a settled scroll
             .filter { !it }
             .collect {
+                // Where they came to rest decides whether following resumes.
                 if (userDriven) {
                     userDriven = false
                     stick = !listState.canScrollForward
@@ -161,10 +170,10 @@ fun ChatScreen(
     // at the bottom has no room left to scroll and the correction is silently
     // dropped — which is how the newest messages ended up behind the keyboard.
     //
-    // Only quantities that scrolling cannot change are sampled. Watching the
-    // layout as a whole feeds the scroll back into its own trigger, and one
-    // scroll that lands slightly short then spins forever, forcing a synchronous
-    // remeasure per frame until the UI locks up.
+    // Sampling a few specific quantities, never the layout as a whole: that
+    // feeds each scroll back into its own trigger, and one scroll landing
+    // slightly short then spins forever, forcing a synchronous remeasure per
+    // frame until the UI locks up.
     LaunchedEffect(listState, store) {
         snapshotFlow {
             val info = listState.layoutInfo
@@ -172,13 +181,19 @@ fun ChatScreen(
             Triple(
                 info.viewportSize.height,
                 info.totalItemsCount,
-                // Height of the newest item, once it is on screen: this is what
-                // grows while a reply streams in. Scrolling does not change it.
+                // Height of the newest item while it is on screen — this is
+                // what grows as a reply streams in. Scrolling *does* disturb
+                // it: fling away from the bottom and the item leaves the
+                // visible window, dropping this to 0. That is why `stick` is
+                // cleared when the drag starts rather than when it settles —
+                // otherwise this fires mid-fling and hauls the list back down.
                 info.visibleItemsInfo.lastOrNull()?.takeIf { it.index == lastIndex }?.size ?: 0,
             )
         }
             .distinctUntilChanged()
-            .collect { if (stick) listState.scrollToBottom() }
+            .collect {
+                if (stick && !listState.isScrollInProgress) listState.scrollToBottom()
+            }
     }
 
     // Fetch the previous page as the top of the loaded range comes into view.
