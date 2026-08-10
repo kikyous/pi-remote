@@ -39,7 +39,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -198,17 +197,39 @@ fun ChatScreen(
 
     // Fetch the previous page as the top of the loaded range comes into view.
     // Forward layout: older messages live at the START (low indices).
-    val shouldLoadOlder by remember(listState) {
-        derivedStateOf {
-            val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
-            first <= PREFETCH_DISTANCE
-        }
-    }
     LaunchedEffect(store, listState) {
-        snapshotFlow { shouldLoadOlder }
+        // One page per gesture, re-armed by the next drag.
+        //
+        // Neither end of this is free to get wrong. Sampling only "is the top
+        // in view" latches: a page of PAGE_SIZE entries can collapse into a
+        // handful of items (unknown kinds dropped, tool results folded into
+        // their call), the top stays in view, the flag never leaves `true` and
+        // never re-fires — paging dies with the loader still sitting there.
+        // But re-evaluating on item count alone runs away instead: the loader
+        // holds index 0, so a reader parked at the very top keeps reporting
+        // index 0 no matter how much history lands underneath it, and the list
+        // pages itself back to the start of the session in one burst.
+        var armed = true
+        launch {
+            listState.interactionSource.interactions.collect {
+                if (it is DragInteraction.Start) armed = true
+            }
+        }
+        snapshotFlow {
+            val info = listState.layoutInfo
+            (info.visibleItemsInfo.firstOrNull()?.index ?: 0) to info.totalItemsCount
+        }
             .distinctUntilChanged()
-            .filter { it }
-            .collect { store.loadOlder() }
+            .filter { (first, _) -> first <= PREFETCH_DISTANCE }
+            .collect {
+                // A list too short to scroll cannot re-arm itself — there is no
+                // gesture to make — so keep paging until one is possible.
+                val scrollable = listState.canScrollForward || listState.canScrollBackward
+                if (armed || !scrollable) {
+                    armed = false
+                    store.loadOlder()
+                }
+            }
     }
 
     LaunchedEffect(state.error) {
@@ -352,14 +373,25 @@ fun ChatScreen(
                     ) {
                     if (state.hasMore) {
                         item(key = "older-loader") {
+                            // The spinner tracks loadingOlder, not hasMore: this
+                            // row exists for the whole unread history, and a
+                            // permanently turning spinner reads as a hang.
                             Row(
                                 Modifier.fillMaxWidth().padding(16.dp),
-                                horizontalArrangement = Arrangement.Center,
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    8.dp,
+                                    Alignment.CenterHorizontally,
+                                ),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                if (state.loadingOlder) {
+                                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                }
                                 Text(
-                                    stringResource(R.string.chat_loading_earlier),
+                                    stringResource(
+                                        if (state.loadingOlder) R.string.chat_loading_earlier
+                                        else R.string.chat_earlier_messages,
+                                    ),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

@@ -26,7 +26,9 @@
     <string name="chat_hint">Message pi…</string>
     <string name="chat_queued">Queued: %1$s</string>
     <string name="chat_waiting_model">Waiting for model…</string>
-    <string name="chat_loading_earlier">   Load earlier messages</string>
+    <string name="chat_loading_earlier">Loading earlier messages</string>
+    <!-- Same row while paging is idle: there is more history, nothing in flight. -->
+    <string name="chat_earlier_messages">Earlier messages</string>
     <string name="chat_empty">No messages in this session yet</string>
     <string name="chat_switch_model">Switch model</string>
     <string name="chat_send_image">Send image</string>

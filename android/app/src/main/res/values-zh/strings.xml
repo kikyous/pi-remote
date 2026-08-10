@@ -26,7 +26,9 @@
     <string name="chat_hint">发消息给 pi…</string>
     <string name="chat_queued">排队中：%1$s</string>
     <string name="chat_waiting_model">正在等待模型...</string>
-    <string name="chat_loading_earlier">  加载更早的消息</string>
+    <string name="chat_loading_earlier">正在加载更早的消息</string>
+    <!-- 同一行在分页空闲时的文案：还有更早的历史，但当前没有请求在跑 -->
+    <string name="chat_earlier_messages">更早的消息</string>
     <string name="chat_empty">这个会话还没有消息</string>
     <string name="chat_switch_model">切换模型</string>
     <string name="chat_send_image">发送图片</string>
