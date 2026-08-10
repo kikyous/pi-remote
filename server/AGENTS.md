@@ -7,7 +7,7 @@ npm test           # 单元测试 (node --test)
 npm run test:e2e   # 端到端，需要先跑起服务
 ```
 
-Token 在 `~/.pi/remote/token`，首次启动自动生成并打印。
+Token 在 `~/.pi/remote/token`，首次启动自动生成并打印。启动横幅附带二维码（`qr.ts`），手机端扫码即得 URL+token，不用手抄 32 位 token。
 
 ## 架构
 

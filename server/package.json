@@ -19,13 +19,15 @@
     "prepublishOnly": "npm run typecheck && npm test"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.0",
     "@earendil-works/pi-coding-agent": "0.84.0",
+    "qrcode": "^1.5.4",
     "tsx": "^4.20.6",
-    "ws": "8.18.3",
-    "@earendil-works/pi-agent-core": "0.84.0"
+    "ws": "8.18.3"
   },
   "devDependencies": {
     "@types/node": "^22",
+    "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1",
     "typescript": "^5.9.3"
   }

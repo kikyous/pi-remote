@@ -1,15 +1,24 @@
 package com.piremote.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -21,15 +30,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.piremote.data.Connection
 import com.piremote.data.normalizeUrl
+import com.piremote.data.parseConnectPayload
 import com.piremote.net.PiRemoteClient
 import kotlinx.coroutines.launch
 
 /**
  * Where the phone is pointed at the PC.
+ *
+ * The primary path is scanning the QR code the server prints at startup — the
+ * address and token fill in automatically and the connection is verified. The
+ * manual fields stay as a fallback for when the screen is hard to scan.
  *
  * The address is normalised on save (bare host, host:port, or full URL all
  * work), and the connection is verified before it is stored, so a typo is
@@ -42,12 +58,75 @@ fun ConnectScreen(
     onCancel: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var url by remember { mutableStateOf(initial.baseUrl) }
     var token by remember { mutableStateOf(initial.token) }
     var testing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var ok by remember { mutableStateOf(false) }
+    var showScanner by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) showScanner = true else {
+            ok = false
+            message = "需要相机权限才能扫码"
+        }
+    }
+
+    /** Verify a candidate connection and store it on success. */
+    fun attemptConnect(rawUrl: String, rawToken: String) {
+        testing = true
+        message = null
+        scope.launch {
+            val normalized = normalizeUrl(rawUrl)
+            val probe = PiRemoteClient(normalized, rawToken.trim())
+            val result = runCatching { probe.ping() }
+            testing = false
+            result.onSuccess { ping ->
+                ok = true
+                message = "已连接 · 服务端 ${ping.version}"
+                onSave(Connection(normalized, rawToken.trim()))
+            }.onFailure { err ->
+                ok = false
+                message = "连接失败：${err.message ?: "无法访问"}"
+            }
+        }
+    }
+
+    /** Open the scanner, asking for camera permission on first use. */
+    fun openScanner() {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) showScanner = true else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    /** Handle a raw QR payload: fill the form and verify the connection. */
+    fun applyScannedPayload(contents: String) {
+        val parsed = parseConnectPayload(contents)
+        if (parsed == null) {
+            ok = false
+            message = "不是 Pi Remote 连接二维码（请扫 PC 控制台启动时打印的码）"
+            return
+        }
+        url = parsed.baseUrl
+        token = parsed.token
+        attemptConnect(parsed.baseUrl, parsed.token)
+    }
+
+    if (showScanner) {
+        QrScannerScreen(
+            onScanned = { contents ->
+                showScanner = false
+                applyScannedPayload(contents)
+            },
+            onDismiss = { showScanner = false },
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
 
     Scaffold(modifier = modifier) { padding ->
         Column(
@@ -59,10 +138,19 @@ fun ConnectScreen(
         ) {
             Text("连接到 PC", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "在 PC 上运行 pi-remote-server，它会打印地址和 token。",
+                "在 PC 上运行 pi-remote-server，它会打印地址和 token。\n用下面的扫码连接，对着屏幕上的二维码扫一下即可。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            Button(
+                enabled = !testing,
+                onClick = ::openScanner,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                Text("  扫码连接", modifier = Modifier.padding(vertical = 4.dp))
+            }
 
             OutlinedTextField(
                 value = url,
@@ -90,32 +178,15 @@ fun ConnectScreen(
                 )
             }
 
-            Button(
+            OutlinedButton(
                 enabled = !testing && url.isNotBlank() && token.isNotBlank(),
-                onClick = {
-                    testing = true
-                    message = null
-                    scope.launch {
-                        val normalized = normalizeUrl(url)
-                        val probe = PiRemoteClient(normalized, token.trim())
-                        val result = runCatching { probe.ping() }
-                        testing = false
-                        result.onSuccess { ping ->
-                            ok = true
-                            message = "已连接 · 服务端 ${ping.version}"
-                            onSave(Connection(normalized, token.trim()))
-                        }.onFailure { err ->
-                            ok = false
-                            message = "连接失败：${err.message ?: "无法访问"}"
-                        }
-                    }
-                },
+                onClick = { attemptConnect(url, token) },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (testing) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("连接")
+                    Text("手动连接")
                 }
             }
 

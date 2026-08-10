@@ -41,13 +41,19 @@ npm install
 npm start        # listens on 0.0.0.0:30150
 ```
 
-First launch prints the connection info and auto-generates a token:
+First launch prints the connection info and auto-generates a token, along with a **QR code** to pair the phone in one scan:
 
 ```
 pi-remote-bridge 0.1.0
   URL:   http://192.168.31.117:30150
   Token: 85Ou5U44v-lN0BckrE6QJ5OuMgBAekZQ
   Listening on all interfaces — only use this on a trusted network.
+
+  Scan with Pi Remote (app → 扫码连接):
+  ▄▄▄▄▄▄▄ ▄ ▄   ▄  ▄▄▄  ▄▄▄▄  ▄  ▄  ▄▄▄▄▄▄▄
+  █ ▄▄▄ █ ▄▀▄▄█   ▀▄ ▄█▀███▄ █▄▄ █  █ ▄▄▄ █
+  █▄▄▄▄▄█ █ ▄▀▄ ▄ █ ▄▀▄▀█▀▄▀█ █▀▄ ▄ █▄▄▄▄▄█
+  ...
 ```
 
 The token lives at `~/.pi/remote/token` (mode `600`) and survives restarts.
@@ -61,7 +67,7 @@ cd android
 
 Or side-load the ready-made APK at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-**First launch:** enter the server address and token, tap **Connect**. The app verifies the connection before saving, so typos are caught immediately.
+**First launch:** tap **扫码连接** and point the camera at the QR code the server printed — the address and token fill in automatically and the connection is verified before saving. Manual entry (地址 + token) remains available as a fallback.
 
 > **Build note:** Requires JDK 17 — make sure `JAVA_HOME` points at a JDK 17 (Gradle picks it up automatically).
 

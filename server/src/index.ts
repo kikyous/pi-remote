@@ -13,6 +13,7 @@ import {
 	updateSession,
 } from "./commands.ts";
 import { lanAddresses, parseArgs } from "./config.ts";
+import { buildConnectPayload, renderConnectQr } from "./qr.ts";
 import { gitCommitDiff, gitCommits, gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
 import { API_PREFIX, type PromptImageDto } from "./protocol.ts";
@@ -231,8 +232,9 @@ function parsePart(raw: string | null): FullPart {
 
 function printBanner(port: number, host: string, token: string): void {
 	const shown = host === "0.0.0.0" || host === "::" ? (lanAddresses()[0] ?? "127.0.0.1") : host;
+	const url = `http://${shown}:${port}`;
 	console.log(`pi-remote-bridge ${VERSION}`);
-	console.log(`  URL:   http://${shown}:${port}`);
+	console.log(`  URL:   ${url}`);
 	console.log(`  Token: ${token}`);
 	if (host === "0.0.0.0" || host === "::") {
 		const others = lanAddresses().slice(1);
@@ -241,6 +243,12 @@ function printBanner(port: number, host: string, token: string): void {
 		}
 		console.log("  Listening on all interfaces — only use this on a trusted network.");
 	}
+	// QR pairing: the phone scans this code from the PC screen and the app
+	// fills address + token by itself, no typing required.
+	void renderConnectQr(buildConnectPayload(url, token)).then((qr) => {
+		console.log("\n  Scan with Pi Remote (app → 扫码连接):");
+		console.log(qr);
+	});
 }
 
 main();
