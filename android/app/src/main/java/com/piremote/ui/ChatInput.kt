@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -139,6 +140,17 @@ fun ChatInput(
     var panelHeightPx by remember { mutableStateOf(0) }
     LaunchedEffect(imePx) {
         if (imePx > panelHeightPx) panelHeightPx = imePx
+    }
+
+    // The animation TARGET, not the live inset: hiding the keyboard sets the
+    // target to 0 immediately, so opening the panel never trips this; showing
+    // it (tapping the field) flips the target to >0 and closes the panel.
+    val imeTarget = WindowInsets.imeAnimationTarget.getBottom(density)
+    LaunchedEffect(imeTarget) {
+        if (imeTarget > 0) {
+            panelOpen = false
+            panelClosing = false
+        }
     }
 
     val keyboard = LocalSoftwareKeyboardController.current
