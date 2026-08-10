@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -634,14 +635,22 @@ private fun StreamingThinkingCard(thinkingText: String) {
     ThinkingCardShell(breathing = true, onClick = { open = !open }) {
         if (open && thinkingText.isNotBlank()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            Text(
-                thinkingText,
-                style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
+            // Thinking can stream to many KB; cap the live body and scroll
+            // inside it (same as tool output) so the page list stays bounded
+            // and scrollable while the text is still growing.
+            Box(
+                Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 10.dp, vertical = 8.dp),
-            )
+            ) {
+                Text(
+                    thinkingText,
+                    style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
