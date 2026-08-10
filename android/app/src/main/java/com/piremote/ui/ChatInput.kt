@@ -553,9 +553,10 @@ fun StreamingBubble(
             }
         }
 
-        if (thinking && text.isBlank()) {
-            // pi-web streaming thinking: shared thinking shell, clickable to
-            // reveal the live thinking text accumulated from thinking_delta.
+        // pi-web keeps the thinking card above the streaming text for the whole
+        // message: show it while thinking is active, or once any thinking text
+        // has accumulated (it stays after text_start until message_end).
+        if (thinking || thinkingText.isNotBlank()) {
             StreamingThinkingCard(thinkingText)
         }
 

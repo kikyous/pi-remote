@@ -106,15 +106,14 @@ class SessionStore(
      * A fast model emits well over a hundred deltas a second; writing each one
      * straight to state would recompose the bubble that many times and drop
      * frames. Buffering into one write per frame keeps it smooth.
+     *
+     * One channel serves both text and thinking deltas: within a message the
+     * phases never overlap (thinking deltas strictly precede text deltas), and
+     * every phase boundary flushes, so the buffer never mixes them and the
+     * current `thinking` flag routes each flush to the right accumulator.
      */
-    private sealed interface Delta {
-        data class Text(val value: String) : Delta
-        data class Thinking(val value: String) : Delta
-    }
-
-    private val deltas = Channel<Delta>(Channel.UNLIMITED)
-    private val pendingText = StringBuilder()
-    private val pendingThinking = StringBuilder()
+    private val deltas = Channel<String>(Channel.UNLIMITED)
+    private val pending = StringBuilder()
 
     init {
         scope.launch { runDeltaPump() }
@@ -426,12 +425,21 @@ class SessionStore(
     private fun onDelta(event: JsonObject) {
         val inner = event["assistantMessageEvent"] as? JsonObject ?: return
         when (inner.str("type")) {
-            "text_delta" -> inner.str("delta")?.let { deltas.trySend(Delta.Text(it)) }
+            "text_delta" -> inner.str("delta")?.let { deltas.trySend(it) }
             // The SDK streams thinking as deltas too; accumulate them so the
             // streaming thinking card can expand to the live content (pi-web).
-            "thinking_delta" -> inner.str("delta")?.let { deltas.trySend(Delta.Thinking(it)) }
-            "thinking_start" -> _streaming.update { it.copy(thinking = true, thinkingText = "") }
-            "text_start" -> _streaming.update { it.copy(thinking = false) }
+            "thinking_delta" -> inner.str("delta")?.let { deltas.trySend(it) }
+            "thinking_start" -> {
+                flushDeltasNow()
+                _streaming.update { it.copy(thinking = true, thinkingText = "") }
+            }
+            // text_start only retires the spinner: the thinking card itself stays
+            // until message_end (pi-web keeps it above the streaming text). The
+            // flush guarantees the pending buffer is routed to thinkingText first.
+            "text_start" -> {
+                flushDeltasNow()
+                _streaming.update { it.copy(thinking = false) }
+            }
         }
     }
 
@@ -439,39 +447,31 @@ class SessionStore(
     private suspend fun runDeltaPump() {
         while (scope.isActive) {
             val first = deltas.receive()
-            collectDelta(first)
+            pending.append(first)
             // Sweep up anything that arrived in the same burst.
             while (true) {
                 val next = deltas.tryReceive().getOrNull() ?: break
-                collectDelta(next)
+                pending.append(next)
             }
             kotlinx.coroutines.delay(FLUSH_INTERVAL_MS)
             flushDeltasNow()
         }
     }
 
-    private fun collectDelta(delta: Delta) {
-        when (delta) {
-            is Delta.Text -> pendingText.append(delta.value)
-            is Delta.Thinking -> pendingThinking.append(delta.value)
-        }
-    }
-
     private fun flushDeltasNow() {
         while (true) {
             val next = deltas.tryReceive().getOrNull() ?: break
-            collectDelta(next)
+            pending.append(next)
         }
-        if (pendingText.isEmpty() && pendingThinking.isEmpty()) return
-        val textChunk = pendingText.toString().takeIf { it.isNotEmpty() }
-        pendingText.setLength(0)
-        val thinkingChunk = pendingThinking.toString().takeIf { it.isNotEmpty() }
-        pendingThinking.setLength(0)
-        _streaming.update { current ->
-            current.copy(
-                text = if (textChunk != null) current.text + textChunk else current.text,
-                thinkingText = if (thinkingChunk != null) current.thinkingText + thinkingChunk else current.thinkingText,
-            )
+        if (pending.isEmpty()) return
+        val chunk = pending.toString()
+        pending.setLength(0)
+        // Phase-correct by construction: flush runs at every thinking/text
+        // boundary, so the buffer holds one phase's deltas only.
+        if (_streaming.value.thinking) {
+            _streaming.update { it.copy(thinkingText = it.thinkingText + chunk) }
+        } else {
+            _streaming.update { it.copy(text = it.text + chunk) }
         }
     }
 
