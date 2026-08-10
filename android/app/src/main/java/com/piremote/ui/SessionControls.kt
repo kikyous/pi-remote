@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,11 +25,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.piremote.net.ModelDto
 import com.piremote.net.SessionDetailDto
 
 /** Which picker sheet is open, if any. Hoisted by the caller so the composer's
- *  "更多" menu can open them. */
+ *  "More" menu can open them. */
 enum class SessionSheet { Model, Thinking }
 
 /**
@@ -56,7 +59,7 @@ fun SessionPickerSheets(
 
     when (sheet) {
         SessionSheet.Model -> PickerSheet(
-            title = "模型",
+            title = stringResource(R.string.model),
             options = models.map { PickerOption(it.key, it.name, it.provider) },
             selectedKey = currentModelDto?.key,
             onDismiss = onDismiss,
@@ -67,7 +70,7 @@ fun SessionPickerSheets(
         )
 
         SessionSheet.Thinking -> PickerSheet(
-            title = "思考等级",
+            title = stringResource(R.string.thinking_level),
             options = levels.map { PickerOption(it, it, null) },
             selectedKey = detail?.thinkingLevel,
             onDismiss = onDismiss,
@@ -126,7 +129,7 @@ private fun PickerSheet(
                     if (option.key == selectedKey) {
                         Icon(
                             Icons.Default.Check,
-                            contentDescription = "已选",
+                            contentDescription = stringResource(R.string.selected),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp),
                         )

@@ -42,8 +42,11 @@ class AgentForegroundService : Service() {
 
     private fun buildNotification(count: Int) =
         NotificationCompat.Builder(this, CHANNEL_RUNNING)
-            .setContentTitle(if (count > 1) "$count 个会话正在运行" else "会话正在运行")
-            .setContentText("保持与 PC 的连接")
+            .setContentTitle(
+                if (count > 1) getString(R.string.fg_running_count, count)
+                else getString(R.string.fg_running),
+            )
+            .setContentText(getString(R.string.fg_keep_connection))
             .setSmallIcon(R.drawable.ic_stat_pi)
             .setOngoing(true)
             .setSilent(true)
@@ -77,14 +80,14 @@ class AgentForegroundService : Service() {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
 
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_RUNNING, "运行中", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "会话运行期间保持连接"
+                NotificationChannel(CHANNEL_RUNNING, context.getString(R.string.fg_running_notif_title), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = context.getString(R.string.fg_running_notif_text)
                     setShowBadge(false)
                 },
             )
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_DONE, "完成提醒", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "会话跑完时通知"
+                NotificationChannel(CHANNEL_DONE, context.getString(R.string.fg_done_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = context.getString(R.string.fg_done_channel_desc)
                 },
             )
         }

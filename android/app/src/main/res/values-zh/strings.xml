@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pi Remote</string>
+
+    <!-- Common -->
+    <string name="back">返回</string>
+    <string name="more">更多</string>
+    <string name="delete">删除</string>
+    <string name="cancel">取消</string>
+    <string name="close">关闭</string>
+    <string name="refresh">刷新</string>
+    <string name="send">发送</string>
+    <string name="stop">中止</string>
+    <string name="model">模型</string>
+    <string name="thinking_level">思考等级</string>
+    <string name="new_session">新建会话</string>
+    <string name="generate_title">生成标题</string>
+    <string name="generating">生成中…</string>
+    <string name="expand">展开</string>
+    <string name="collapse">收起</string>
+    <string name="selected">已选</string>
+    <string name="image">图片</string>
+    <string name="session">会话</string>
+
+    <!-- Chat -->
+    <string name="chat_hint">发消息给 pi…</string>
+    <string name="chat_queued">排队中：%1$s</string>
+    <string name="chat_waiting_model">正在等待模型...</string>
+    <string name="chat_loading_earlier">  加载更早的消息</string>
+    <string name="chat_empty">这个会话还没有消息</string>
+    <string name="chat_switch_model">切换模型</string>
+    <string name="chat_send_image">发送图片</string>
+    <string name="chat_attached_image">附件图片</string>
+    <string name="chat_remove_attachment">移除附件</string>
+    <string name="chat_title_generated">已生成标题：%1$s</string>
+    <string name="chat_image_read_failed">读取图片失败</string>
+    <string name="chat_session_running"> · 运行中</string>
+    <string name="chat_git_changes">Git 改动</string>
+    <string name="chat_session_title">会话</string>
+
+    <!-- Workspaces / projects -->
+    <string name="ws_settings">设置</string>
+    <string name="ws_new">新建工作区</string>
+    <string name="ws_no_sessions">还没有任何会话。在 PC 上用 pi 开一个试试。</string>
+    <string name="ws_meta">%1$d 个会话 · %2$s</string>
+    <string name="ws_delete_title">删除工作区？</string>
+    <string name="ws_delete_msg">将删除 %1$s 下的 %2$d 个会话。目录本身保留，不会删除磁盘上的文件。</string>
+    <string name="ws_deleted">已删除工作区 %1$s</string>
+    <string name="ws_no_sessions_dir">这个目录下还没有会话</string>
+    <string name="ws_message_count">%1$d 条</string>
+    <string name="ws_delete_session_title">删除会话？</string>
+    <string name="ws_delete_session_msg">将永久删除这个会话及其全部历史。</string>
+    <string name="ws_session_deleted">已删除会话</string>
+    <string name="ws_created">已创建工作区 %1$s</string>
+    <string name="ws_reused">已复用工作区 %1$s</string>
+    <string name="time_just_now">刚刚</string>
+    <string name="time_minutes_ago">%1$d 分钟前</string>
+    <string name="time_hours_ago">%1$d 小时前</string>
+    <string name="time_days_ago">%1$d 天前</string>
+    <string name="empty_session_title">(空会话)</string>
+
+    <!-- Tool cards -->
+    <string name="tool_result">工具结果</string>
+    <string name="tool_image_truncated">［图片，%1$s］</string>
+    <string name="tool_expand_all">展开全部（%1$s）</string>
+    <string name="tool_loading_more">加载中…（%1$s）</string>
+
+    <!-- Busy dialog -->
+    <string name="busy_title">会话正在运行</string>
+    <string name="busy_image_placeholder">［图片］</string>
+    <string name="busy_message">「%1$s」\n\n插队会在当前这一轮的工具调用结束后立刻送达；排队则等整轮跑完再送。</string>
+    <string name="busy_interrupt">插队</string>
+    <string name="busy_queue">排队</string>
+
+    <!-- Connect / QR -->
+    <string name="conn_title">连接到 PC</string>
+    <string name="conn_subtitle">在 PC 上运行 pi-remote-server，它会打印地址和 token。\n用下面的扫码连接，对着屏幕上的二维码扫一下即可。</string>
+    <string name="conn_scan">  扫码连接</string>
+    <string name="conn_address">地址</string>
+    <string name="conn_manual">手动连接</string>
+    <string name="conn_connected">已连接 · 服务端 %1$s</string>
+    <string name="conn_failed">连接失败：%1$s</string>
+    <string name="conn_qr_invalid">不是 Pi Remote 连接二维码（请扫 PC 控制台启动时打印的码）</string>
+    <string name="conn_camera_required">需要相机权限才能扫码</string>
+    <string name="qr_hint">对准 PC 控制台启动时打印的二维码</string>
+    <string name="qr_detail">服务端启动后会打印 URL、Token 和二维码</string>
+    <string name="qr_autoconnect">扫描到二维码后自动连接</string>
+    <string name="qr_flashlight">手电筒</string>
+    <string name="qr_camera_failed">无法打开相机：%1$s</string>
+
+    <!-- Git -->
+    <string name="git_status_failed">获取 git 状态失败</string>
+    <string name="git_commits_failed">获取提交失败</string>
+    <string name="git_diff_failed">获取 diff 失败</string>
+    <string name="git_detail_failed">获取提交详情失败</string>
+
+    <!-- Notices (system messages in chat) -->
+    <string name="notice_compacted">上下文已压缩</string>
+    <string name="notice_branch_summary">分支摘要</string>
+    <string name="notice_model_change">模型切换为 %1$s</string>
+    <string name="notice_thinking_level">思考等级：%1$s</string>
+    <string name="notice_session_named">会话命名为「%1$s」</string>
+
+    <!-- Data-layer errors -->
+    <string name="err_set_title">设置标题失败</string>
+    <string name="err_generate_title">生成标题失败</string>
+    <string name="err_abort">中止失败</string>
+    <string name="err_unknown">未知错误</string>
+    <string name="err_unreachable">无法访问</string>
+    <string name="not_loaded">未加载</string>
+    <string name="err_load_projects">加载项目失败</string>
+    <string name="err_load_sessions">加载会话失败</string>
+    <string name="err_create_session">新建会话失败</string>
+    <string name="err_create_workspace">新建工作区失败</string>
+    <string name="err_delete">删除失败</string>
+    <string name="session_finished">%1$s 已完成</string>
+
+    <!-- Foreground service -->
+    <string name="fg_running_count">%1$d 个会话正在运行</string>
+    <string name="fg_running">会话正在运行</string>
+    <string name="fg_keep_connection">保持与 PC 的连接</string>
+    <string name="fg_running_notif_title">运行中</string>
+    <string name="fg_running_notif_text">会话运行期间保持连接</string>
+    <string name="fg_done_channel">完成提醒</string>
+    <string name="fg_done_channel_desc">会话跑完时通知</string>
+</resources>

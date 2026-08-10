@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -48,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -139,7 +142,7 @@ private fun UserBlock(
                     bmp != null -> {
                         Image(
                             bitmap = bmp.asImageBitmap(),
-                            contentDescription = "图片",
+                            contentDescription = stringResource(R.string.image),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = if (item.text.isNotBlank()) 6.dp else 0.dp)
@@ -428,7 +431,7 @@ private fun ToolCallRow(
             // Chevron sits at the end and rotates 180° when open (pi-web).
             Icon(
                 Icons.Default.ExpandMore,
-                contentDescription = if (open) "收起" else "展开",
+                contentDescription = if (open) stringResource(R.string.collapse) else stringResource(R.string.expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.rotate(rotation).size(16.dp),
             )
@@ -492,7 +495,7 @@ private fun ToolResultBlock(
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Text(
-            result.toolName.ifBlank { "工具结果" },
+            result.toolName.ifBlank { stringResource(R.string.tool_result) },
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -507,7 +510,7 @@ private fun ToolResultBody(result: ToolResult, expanded: Map<String, String>, on
 
     if (result.hasImage && full == null) {
         Text(
-            "［图片，${truncation?.displaySize ?: "未加载"}］",
+            stringResource(R.string.tool_image_truncated, truncation?.displaySize ?: stringResource(R.string.not_loaded)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -571,7 +574,7 @@ private fun BashBlock(
             )
             Icon(
                 Icons.Default.ExpandMore,
-                contentDescription = if (open) "收起" else "展开",
+                contentDescription = if (open) stringResource(R.string.collapse) else stringResource(R.string.expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.rotate(rotation).size(16.dp),
             )
@@ -588,13 +591,21 @@ private fun BashBlock(
 
 @Composable
 private fun NoticeBlock(item: ChatItem.Notice, modifier: Modifier) {
+    val text = when (item.kind) {
+        ChatItem.NoticeKind.Generic -> item.text
+        ChatItem.NoticeKind.Compaction -> stringResource(R.string.notice_compacted)
+        ChatItem.NoticeKind.BranchSummary -> stringResource(R.string.notice_branch_summary)
+        ChatItem.NoticeKind.ModelChange -> stringResource(R.string.notice_model_change, item.arg)
+        ChatItem.NoticeKind.ThinkingLevel -> stringResource(R.string.notice_thinking_level, item.arg)
+        ChatItem.NoticeKind.SessionNamed -> stringResource(R.string.notice_session_named, item.arg)
+    }
     Row(
         modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         HorizontalDivider(Modifier.weight(1f))
         Text(
-            item.text,
+            text,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 8.dp),
@@ -668,7 +679,7 @@ private fun ZoomableImageDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
             ) {
                 Icon(
                     Icons.Default.Close,
-                    contentDescription = "关闭",
+                    contentDescription = stringResource(R.string.close),
                     tint = Color.White,
                 )
             }
@@ -703,7 +714,7 @@ private fun ScrollableCode(text: String, error: Boolean = false) {
 private fun ExpandRow(truncation: Truncation, expanded: Map<String, String>, onExpand: (Truncation) -> Unit) {
     if (expanded.containsKey(truncation.key())) return
     Text(
-        "展开全部（${truncation.displaySize}）",
+        stringResource(R.string.tool_expand_all, truncation.displaySize),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.clickable { onExpand(truncation) }.padding(top = 4.dp),
@@ -734,7 +745,7 @@ private const val ROW_ARG_LIMIT = 160
 @Composable
 private fun LoadingMore(size: String) {
     Text(
-        "加载中…（$size）",
+        stringResource(R.string.tool_loading_more, size),
         style = MaterialTheme.typography.labelSmall,
         color = Color.Gray,
         modifier = Modifier.padding(start = 24.dp),

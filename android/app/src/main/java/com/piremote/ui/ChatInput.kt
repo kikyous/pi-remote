@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -68,6 +70,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,7 +122,7 @@ fun ChatInput(
     // and re-entering the chat screen.
     val text by draft.collectAsStateWithLifecycle()
 
-    // The "更多" panel (WeChat-style): tapping + swaps the keyboard for a
+    // The "More" panel (WeChat-style): tapping + swaps the keyboard for a
     // grid of actions at exactly the IME height, so nothing jumps.
     var panelOpen by remember { mutableStateOf(false) }
     // While the keyboard slides up over the panel, keep the panel mounted so
@@ -222,7 +225,7 @@ fun ChatInput(
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
                 for (message in queued) {
                     Text(
-                        "排队中：$message",
+                        stringResource(R.string.chat_queued, message),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -260,7 +263,7 @@ fun ChatInput(
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,
-                placeholder = { Text("发消息给 pi…") },
+                placeholder = { Text(stringResource(R.string.chat_hint)) },
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(max = 160.dp)
@@ -290,7 +293,7 @@ fun ChatInput(
                     IconButton(onClick = togglePanel) {
                         Icon(
                             if (panelOpen) Icons.Default.Close else Icons.Default.Add,
-                            contentDescription = "更多",
+                            contentDescription = stringResource(R.string.more),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -305,7 +308,7 @@ fun ChatInput(
                         ) {
                             Icon(
                                 Icons.Default.Stop,
-                                contentDescription = "中止",
+                                contentDescription = stringResource(R.string.stop),
                                 // A bit bigger than the default so the stop
                                 // square reads clearly at a glance.
                                 modifier = Modifier.size(32.dp),
@@ -326,7 +329,7 @@ fun ChatInput(
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "发送",
+                                contentDescription = stringResource(R.string.send),
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -372,20 +375,27 @@ private fun MorePanel(
     onPickImages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    data class Cell(val label: String, val icon: ImageVector, val action: () -> Unit)
+    data class Cell(
+        val label: String,
+        val icon: ImageVector,
+        val action: () -> Unit,
+        val generating: Boolean = false,
+    )
 
     val cells = buildList {
-        add(Cell("切换模型", Icons.Outlined.SmartToy, onPickModel))
-        onPickThinking?.let { add(Cell("思考等级", Icons.Outlined.Psychology, it)) }
-        add(Cell("新建会话", Icons.Outlined.NoteAdd, onNewSession))
+        add(Cell(stringResource(R.string.chat_switch_model), Icons.Outlined.SmartToy, onPickModel))
+        onPickThinking?.let { add(Cell(stringResource(R.string.thinking_level), Icons.Outlined.Psychology, it)) }
+        add(Cell(stringResource(R.string.new_session), Icons.Outlined.NoteAdd, onNewSession))
         add(
             Cell(
-                if (generatingTitle) "生成中…" else "生成标题",
+                if (generatingTitle) stringResource(R.string.generating)
+                else stringResource(R.string.generate_title),
                 Icons.Outlined.Title,
                 { if (!generatingTitle) onGenerateTitle() },
+                generating = generatingTitle,
             ),
         )
-        add(Cell("发送图片", Icons.Outlined.Image, onPickImages))
+        add(Cell(stringResource(R.string.chat_send_image), Icons.Outlined.Image, onPickImages))
     }
 
     // The grid is centered as a whole; items flow left-to-right inside fixed
@@ -420,7 +430,7 @@ private fun MorePanel(
                         Column(
                             Modifier
                                 .width(cellWidth)
-                                .clickable(enabled = cell.label != "生成中…") { cell.action() },
+                                .clickable(enabled = !cell.generating) { cell.action() },
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                         Box(
@@ -431,7 +441,7 @@ private fun MorePanel(
                                 .padding(14.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (cell.label == "生成中…") {
+                            if (cell.generating) {
                                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                             } else {
                                 Icon(
@@ -570,7 +580,7 @@ private fun AttachmentThumb(image: PromptImage, onRemove: () -> Unit) {
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
-                contentDescription = "附件图片",
+                contentDescription = stringResource(R.string.chat_attached_image),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(48.dp)
@@ -599,7 +609,7 @@ private fun AttachmentThumb(image: PromptImage, onRemove: () -> Unit) {
         ) {
             Icon(
                 Icons.Default.Close,
-                contentDescription = "移除附件",
+                contentDescription = stringResource(R.string.chat_remove_attachment),
                 tint = Color.White,
                 modifier = Modifier.size(10.dp),
             )

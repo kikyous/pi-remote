@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -49,7 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -75,6 +79,7 @@ fun ProjectListScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var pendingDelete by remember { mutableStateOf<ProjectDto?>(null) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) { if (state.projects.isEmpty()) repo.refreshProjects() }
 
@@ -85,7 +90,7 @@ fun ProjectListScreen(
                 title = { Text("Pi Remote") },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.ws_settings))
                     }
                 },
             )
@@ -94,7 +99,7 @@ fun ProjectListScreen(
             ExtendedFloatingActionButton(
                 onClick = onNewWorkspace,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("新建工作区") },
+                text = { Text(stringResource(R.string.ws_new)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -107,7 +112,7 @@ fun ProjectListScreen(
             if (state.projects.isEmpty() && state.loadingProjects) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else if (state.projects.isEmpty()) {
-                EmptyHint(state.error ?: "还没有任何会话。在 PC 上用 pi 开一个试试。")
+                EmptyHint(state.error ?: stringResource(R.string.ws_no_sessions))
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(state.projects, key = { it.cwd }) { project ->
@@ -131,7 +136,7 @@ fun ProjectListScreen(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    "${project.sessionCount} 个会话 · ${project.lastModified.toFriendlyTime()}",
+                                    stringResource(R.string.ws_meta, project.sessionCount, project.lastModified.toFriendlyTime(context)),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -147,20 +152,20 @@ fun ProjectListScreen(
     pendingDelete?.let { project ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除工作区？") },
-            text = { Text("将删除 ${project.name} 下的 ${project.sessionCount} 个会话。目录本身保留，不会删除磁盘上的文件。") },
+            title = { Text(stringResource(R.string.ws_delete_title)) },
+            text = { Text(stringResource(R.string.ws_delete_msg, project.name, project.sessionCount)) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = null
                     repo.deleteWorkspace(project.cwd) { error ->
                         scope.launch {
-                            snackbar.showSnackbar(error ?: "已删除工作区 ${project.name}")
+                            snackbar.showSnackbar(error ?: context.getString(R.string.ws_deleted, project.name))
                         }
                     }
-                }) { Text("删除") }
+                }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -181,6 +186,7 @@ fun SessionListScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var pendingDelete by remember { mutableStateOf<SessionSummaryDto?>(null) }
+    val context = LocalContext.current
 
     Scaffold(
         modifier = modifier,
@@ -188,7 +194,7 @@ fun SessionListScreen(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 title = {
@@ -209,7 +215,7 @@ fun SessionListScreen(
             ExtendedFloatingActionButton(
                 onClick = { repo.createSession(project.cwd, onOpenNewSession) },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("新建会话") },
+                text = { Text(stringResource(R.string.new_session)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -222,7 +228,7 @@ fun SessionListScreen(
             if (state.sessions.isEmpty() && state.loadingSessions) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else if (state.sessions.isEmpty()) {
-                EmptyHint(state.error ?: "这个目录下还没有会话")
+                EmptyHint(state.error ?: stringResource(R.string.ws_no_sessions_dir))
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(state.sessions, key = { it.id }) { session ->
@@ -234,19 +240,19 @@ fun SessionListScreen(
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                             ) {
                                 Text(
-                                    session.displayTitle,
+                                    session.displayTitle.ifBlank { stringResource(R.string.empty_session_title) },
                                     style = MaterialTheme.typography.bodyLarge,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(
-                                        "${session.messageCount} 条",
+                                        stringResource(R.string.ws_message_count, session.messageCount),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     Text(
-                                        session.modified.toFriendlyTime(),
+                                        session.modified.toFriendlyTime(context),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -263,20 +269,20 @@ fun SessionListScreen(
     pendingDelete?.let { session ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除会话？") },
-            text = { Text("将永久删除这个会话及其全部历史。") },
+            title = { Text(stringResource(R.string.ws_delete_session_title)) },
+            text = { Text(stringResource(R.string.ws_delete_session_msg)) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = null
                     repo.deleteSession(session.id, project.cwd) { error ->
                         scope.launch {
-                            snackbar.showSnackbar(error ?: "已删除会话")
+                            snackbar.showSnackbar(error ?: context.getString(R.string.ws_session_deleted))
                         }
                     }
-                }) { Text("删除") }
+                }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -319,7 +325,7 @@ private fun SwipeRevealAction(
             ) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "删除",
+                    contentDescription = stringResource(R.string.delete),
                     tint = Color.White,
                 )
             }
@@ -372,15 +378,15 @@ private fun BoxScope.EmptyHint(text: String) {
 }
 
 /** ISO timestamp → something readable at a glance. */
-fun String.toFriendlyTime(): String {
+fun String.toFriendlyTime(context: android.content.Context): String {
     val instant = runCatching { java.time.Instant.parse(this) }.getOrNull() ?: return this
     val now = java.time.Instant.now()
     val minutes = java.time.Duration.between(instant, now).toMinutes()
     return when {
-        minutes < 1 -> "刚刚"
-        minutes < 60 -> "$minutes 分钟前"
-        minutes < 60 * 24 -> "${minutes / 60} 小时前"
-        minutes < 60 * 24 * 30 -> "${minutes / (60 * 24)} 天前"
+        minutes < 1 -> context.getString(R.string.time_just_now)
+        minutes < 60 -> context.getString(R.string.time_minutes_ago, minutes)
+        minutes < 60 * 24 -> context.getString(R.string.time_hours_ago, minutes / 60)
+        minutes < 60 * 24 * 30 -> context.getString(R.string.time_days_ago, minutes / (60 * 24))
         else -> java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
             .withZone(java.time.ZoneId.systemDefault())
             .format(instant)

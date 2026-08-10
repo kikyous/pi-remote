@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -72,7 +75,7 @@ fun ConnectScreen(
     ) { granted ->
         if (granted) showScanner = true else {
             ok = false
-            message = "需要相机权限才能扫码"
+            message = context.getString(R.string.conn_camera_required)
         }
     }
 
@@ -87,11 +90,14 @@ fun ConnectScreen(
             testing = false
             result.onSuccess { ping ->
                 ok = true
-                message = "已连接 · 服务端 ${ping.version}"
+                message = context.getString(R.string.conn_connected, ping.version)
                 onSave(Connection(normalized, rawToken.trim()))
             }.onFailure { err ->
                 ok = false
-                message = "连接失败：${err.message ?: "无法访问"}"
+                message = context.getString(
+                    R.string.conn_failed,
+                    err.message ?: context.getString(R.string.err_unreachable),
+                )
             }
         }
     }
@@ -108,7 +114,7 @@ fun ConnectScreen(
         val parsed = parseConnectPayload(contents)
         if (parsed == null) {
             ok = false
-            message = "不是 Pi Remote 连接二维码（请扫 PC 控制台启动时打印的码）"
+            message = context.getString(R.string.conn_qr_invalid)
             return
         }
         url = parsed.baseUrl
@@ -136,9 +142,9 @@ fun ConnectScreen(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("连接到 PC", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.conn_title), style = MaterialTheme.typography.headlineSmall)
             Text(
-                "在 PC 上运行 pi-remote-server，它会打印地址和 token。\n用下面的扫码连接，对着屏幕上的二维码扫一下即可。",
+                stringResource(R.string.conn_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -149,13 +155,13 @@ fun ConnectScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
-                Text("  扫码连接", modifier = Modifier.padding(vertical = 4.dp))
+                Text(stringResource(R.string.conn_scan), modifier = Modifier.padding(vertical = 4.dp))
             }
 
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it; message = null },
-                label = { Text("地址") },
+                label = { Text(stringResource(R.string.conn_address)) },
                 placeholder = { Text("192.168.1.10:30150") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -186,13 +192,13 @@ fun ConnectScreen(
                 if (testing) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("手动连接")
+                    Text(stringResource(R.string.conn_manual))
                 }
             }
 
             if (onCancel != null) {
                 TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         }

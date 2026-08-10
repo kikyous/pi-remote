@@ -45,8 +45,17 @@ sealed interface ChatItem {
         val truncation: Truncation?,
     ) : ChatItem
 
-    /** Compaction, branch summaries, model/thinking switches — thin dividers. */
-    data class Notice(override val entryId: String, val text: String) : ChatItem
+    /** Compaction, branch summaries, model/thinking switches — thin dividers.
+     *  System messages carry a [kind] so the UI can localize them; [text] is
+     *  only used for [NoticeKind.Generic] (custom/server-provided text). */
+    data class Notice(
+        override val entryId: String,
+        val text: String = "",
+        val kind: NoticeKind = NoticeKind.Generic,
+        val arg: String = "",
+    ) : ChatItem
+
+    enum class NoticeKind { Generic, Compaction, BranchSummary, ModelChange, ThinkingLevel, SessionNamed }
 }
 
 data class Thinking(val preview: String, val truncation: Truncation?)
@@ -140,15 +149,15 @@ fun parseEntry(entry: JsonObject): ChatItem? {
     val id = entry.str("id") ?: return null
     return when (entry.str("type")) {
         "message" -> parseMessage(id, entry["message"] as? JsonObject ?: return null)
-        "compaction" -> ChatItem.Notice(id, "上下文已压缩")
-        "branch_summary" -> ChatItem.Notice(id, "分支摘要")
+        "compaction" -> ChatItem.Notice(id, kind = ChatItem.NoticeKind.Compaction)
+        "branch_summary" -> ChatItem.Notice(id, kind = ChatItem.NoticeKind.BranchSummary)
         "model_change" -> {
             val provider = entry.str("provider").orEmpty()
             val model = entry.str("modelId").orEmpty()
-            ChatItem.Notice(id, "模型切换为 $provider/$model")
+            ChatItem.Notice(id, kind = ChatItem.NoticeKind.ModelChange, arg = "$provider/$model")
         }
-        "thinking_level_change" -> ChatItem.Notice(id, "思考等级：${entry.str("thinkingLevel").orEmpty()}")
-        "session_info" -> entry.str("name")?.let { ChatItem.Notice(id, "会话命名为「$it」") }
+        "thinking_level_change" -> ChatItem.Notice(id, kind = ChatItem.NoticeKind.ThinkingLevel, arg = entry.str("thinkingLevel").orEmpty())
+        "session_info" -> entry.str("name")?.let { ChatItem.Notice(id, kind = ChatItem.NoticeKind.SessionNamed, arg = it) }
         // label / custom carry no conversation content.
         else -> null
     }
@@ -174,9 +183,9 @@ private fun parseMessage(entryId: String, message: JsonObject): ChatItem? =
             exitCode = message.int("exitCode"),
             truncation = message.truncation(entryId),
         )
-        "custom" -> message.contentText().takeIf { it.isNotBlank() }?.let { ChatItem.Notice(entryId, it) }
-        "compactionSummary" -> ChatItem.Notice(entryId, "上下文已压缩")
-        "branchSummary" -> ChatItem.Notice(entryId, "分支摘要")
+        "custom" -> message.contentText().takeIf { it.isNotBlank() }?.let { ChatItem.Notice(entryId, text = it) }
+        "compactionSummary" -> ChatItem.Notice(entryId, kind = ChatItem.NoticeKind.Compaction)
+        "branchSummary" -> ChatItem.Notice(entryId, kind = ChatItem.NoticeKind.BranchSummary)
         else -> null
     }
 

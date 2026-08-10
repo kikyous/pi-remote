@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -57,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -127,7 +130,10 @@ fun QrScannerScreen(
                     previewViewRef.value?.surfaceProvider?.let { preview.setSurfaceProvider(it) }
                 } catch (err: Exception) {
                     Log.e("QrScanner", "camera bind failed", err)
-                    error = "无法打开相机：${err.message ?: err.javaClass.simpleName}"
+                    error = context.getString(
+                        R.string.qr_camera_failed,
+                        err.message ?: err.javaClass.simpleName,
+                    )
                 }
             },
             ContextCompat.getMainExecutor(context),
@@ -212,9 +218,9 @@ fun QrScannerScreen(
                 .padding(top = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("对准 PC 控制台启动时打印的二维码", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.qr_hint), color = Color.White, style = MaterialTheme.typography.bodyLarge)
             Text(
-                "服务端启动后会打印 URL、Token 和二维码",
+                stringResource(R.string.qr_detail),
                 color = Color.White.copy(alpha = 0.7f),
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -230,9 +236,9 @@ fun QrScannerScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onDismiss) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = Color.White)
             }
-            Text("扫描到二维码后自动连接", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.qr_autoconnect), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
             IconButton(
                 enabled = torchAvailable,
                 onClick = {
@@ -242,7 +248,7 @@ fun QrScannerScreen(
             ) {
                 Icon(
                     if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
-                    contentDescription = "手电筒",
+                    contentDescription = stringResource(R.string.qr_flashlight),
                     tint = Color.White,
                 )
             }

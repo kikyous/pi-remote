@@ -1,5 +1,7 @@
 package com.piremote.data
 
+import com.piremote.R
+
 import com.piremote.net.ApiException
 import com.piremote.net.PiRemoteClient
 import com.piremote.net.PromptImage
@@ -54,6 +56,7 @@ class SessionStore(
     val sessionId: String,
     private val client: PiRemoteClient,
     private val scope: CoroutineScope,
+    private val context: android.content.Context,
 ) {
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
@@ -274,7 +277,7 @@ class SessionStore(
                 _state.update { it.copy(detail = detail) }
                 onDone(null)
             } catch (e: Exception) {
-                onDone(e.message ?: "设置标题失败")
+                onDone(e.message ?: context.getString(R.string.err_set_title))
             }
         }
     }
@@ -293,7 +296,7 @@ class SessionStore(
                 onDone(title, null)
             } catch (e: Exception) {
                 _state.update { it.copy(generatingTitle = false) }
-                onDone(null, e.message ?: "生成标题失败")
+                onDone(null, e.message ?: context.getString(R.string.err_generate_title))
             }
         }
     }
@@ -301,7 +304,7 @@ class SessionStore(
     fun abort() {
         scope.launch {
             runCatching { client.abort(sessionId) }
-                .onFailure { e -> _state.update { it.copy(error = e.message ?: "中止失败") } }
+                .onFailure { e -> _state.update { it.copy(error = e.message ?: context.getString(R.string.err_abort)) } }
         }
     }
 
@@ -502,5 +505,5 @@ private fun JsonObject?.textContent(): String {
 
 private fun Exception.readable(): String = when (this) {
     is ApiException -> message
-    else -> message ?: this::class.simpleName ?: "未知错误"
+    else -> message ?: this::class.simpleName ?: "Unknown error"
 }

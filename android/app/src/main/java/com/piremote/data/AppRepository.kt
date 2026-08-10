@@ -1,5 +1,7 @@
 package com.piremote.data
 
+import com.piremote.R
+
 import com.piremote.net.EventSocket
 import com.piremote.net.ModelDto
 import com.piremote.net.PiRemoteClient
@@ -102,7 +104,7 @@ class AppRepository(
                             sessionId = sessionId,
                             title = store?.state?.value?.detail?.name
                                 ?: store?.state?.value?.detail?.firstMessage?.take(40)
-                                ?: "会话",
+                                ?: appContext.getString(R.string.session),
                             preview = store?.lastAssistantText().orEmpty(),
                         )
                         _finished.tryEmit(finished)
@@ -111,7 +113,7 @@ class AppRepository(
                         AgentForegroundService.notifyFinished(
                             appContext,
                             finished.sessionId,
-                            "${finished.title} 已完成",
+                            appContext.getString(R.string.session_finished, finished.title),
                             finished.preview,
                         )
                     }
@@ -151,7 +153,7 @@ class AppRepository(
             stores[sessionId] = existing
             return existing
         }
-        val created = SessionStore(sessionId, client, scope)
+        val created = SessionStore(sessionId, client, scope, appContext)
         stores[sessionId] = created
         while (stores.size > MAX_CACHED_SESSIONS) {
             val oldest = stores.keys.first()
@@ -167,7 +169,7 @@ class AppRepository(
                 val projects = client.listProjects()
                 _browse.update { it.copy(projects = projects, loadingProjects = false) }
             } catch (e: Exception) {
-                _browse.update { it.copy(loadingProjects = false, error = e.message ?: "加载项目失败") }
+                _browse.update { it.copy(loadingProjects = false, error = e.message ?: appContext.getString(R.string.err_load_projects)) }
             }
         }
     }
@@ -187,7 +189,7 @@ class AppRepository(
                 if (_browse.value.selectedCwd != cwd) return@launch
                 _browse.update { it.copy(sessions = sessions, loadingSessions = false) }
             } catch (e: Exception) {
-                _browse.update { it.copy(loadingSessions = false, error = e.message ?: "加载会话失败") }
+                _browse.update { it.copy(loadingSessions = false, error = e.message ?: appContext.getString(R.string.err_load_sessions)) }
             }
         }
     }
@@ -213,7 +215,7 @@ class AppRepository(
                 refreshSessions(cwd)
                 onCreated(created.id)
             } catch (e: Exception) {
-                _browse.update { it.copy(error = e.message ?: "新建会话失败") }
+                _browse.update { it.copy(error = e.message ?: appContext.getString(R.string.err_create_session)) }
             }
         }
     }
@@ -229,7 +231,7 @@ class AppRepository(
                 refreshProjects()
                 onCreated(ws)
             } catch (e: Exception) {
-                _browse.update { it.copy(error = e.message ?: "新建工作区失败") }
+                _browse.update { it.copy(error = e.message ?: appContext.getString(R.string.err_create_workspace)) }
             }
         }
     }
@@ -242,7 +244,7 @@ class AppRepository(
                 refreshSessions(cwd)
                 onResult(null)
             } catch (e: Exception) {
-                onResult(e.message ?: "删除失败")
+                onResult(e.message ?: appContext.getString(R.string.err_delete))
             }
         }
     }
@@ -255,7 +257,7 @@ class AppRepository(
                 refreshProjects()
                 onResult(null)
             } catch (e: Exception) {
-                onResult(e.message ?: "删除失败")
+                onResult(e.message ?: appContext.getString(R.string.err_delete))
             }
         }
     }

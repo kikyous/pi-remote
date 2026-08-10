@@ -31,11 +31,12 @@ data class SessionSummaryDto(
     val firstMessage: String = "",
     val parentSessionId: String? = null,
 ) {
-    /** What to show in a list row: the user's name, else the opening message. */
+    /** What to show in a list row: the user's name, else the opening message.
+     *  Empty when there is nothing; the UI localizes the placeholder. */
     val displayTitle: String
         get() = name?.takeIf { it.isNotBlank() }
             ?: firstMessage.takeIf { it.isNotBlank() }?.lineSequence()?.firstOrNull()?.take(80)
-            ?: "(空会话)"
+            ?: ""
 }
 
 @Serializable

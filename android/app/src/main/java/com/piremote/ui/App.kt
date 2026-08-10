@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -146,7 +148,11 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                             screen = Screen.Chat(ws.id, project)
                             snackbarScope.launch {
                                 snackbarHostState.showSnackbar(
-                                    if (ws.created) "已创建工作区 ${ws.cwd}" else "已复用工作区 ${ws.cwd}",
+                                    if (ws.created) {
+                                        context.getString(R.string.ws_created, ws.cwd)
+                                    } else {
+                                        context.getString(R.string.ws_reused, ws.cwd)
+                                    },
                                 )
                             }
                         }

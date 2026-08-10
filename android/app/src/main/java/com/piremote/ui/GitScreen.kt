@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -41,6 +43,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -126,7 +130,7 @@ private fun GitListScreen(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 title = {
@@ -174,6 +178,7 @@ private fun GitListScreen(
 @Composable
 private fun ChangesList(repo: AppRepository, cwd: String, onOpenFile: (String) -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var status by remember { mutableStateOf<GitStatusDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
@@ -184,7 +189,7 @@ private fun ChangesList(repo: AppRepository, cwd: String, onOpenFile: (String) -
             status = repo.client.gitStatus(cwd)
             error = null
         } catch (e: Exception) {
-            error = e.message ?: "获取 git 状态失败"
+            error = e.message ?: context.getString(R.string.git_status_failed)
         } finally {
             refreshing = false
         }
@@ -227,6 +232,7 @@ private fun ChangesList(repo: AppRepository, cwd: String, onOpenFile: (String) -
 @Composable
 private fun CommitsList(repo: AppRepository, cwd: String, onOpenCommit: (GitCommitDto) -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     var commits by remember { mutableStateOf<List<GitCommitDto>>(emptyList()) }
     var nextCursor by remember { mutableStateOf<String?>(null) }
@@ -243,7 +249,7 @@ private fun CommitsList(repo: AppRepository, cwd: String, onOpenCommit: (GitComm
             nextCursor = page.nextCursor
             error = null
         } catch (e: Exception) {
-            if (reset) error = e.message ?: "获取提交失败"
+            if (reset) error = e.message ?: context.getString(R.string.git_commits_failed)
         } finally {
             loading = false
         }
@@ -340,6 +346,7 @@ private fun GitChangeRow(change: GitChangeDto, onClick: () -> Unit) {
 
 @Composable
 private fun GitCommitRow(commit: GitCommitDto, onClick: () -> Unit) {
+    val context = LocalContext.current
     Column(
         Modifier
             .fillMaxWidth()
@@ -363,7 +370,7 @@ private fun GitCommitRow(commit: GitCommitDto, onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                "  ${commit.author} · ${commit.date.toFriendlyTime()}",
+                "  ${commit.author} · ${commit.date.toFriendlyTime(context)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
@@ -416,13 +423,14 @@ private fun GitDiffScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var diff by remember { mutableStateOf<GitDiffDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(cwd, path) {
         runCatching { repo.client.gitDiff(cwd, path) }
             .onSuccess { diff = it }
-            .onFailure { error = it.message ?: "获取 diff 失败" }
+            .onFailure { error = it.message ?: context.getString(R.string.git_diff_failed) }
     }
 
     DiffScaffold(
@@ -450,18 +458,19 @@ private fun GitCommitDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var detail by remember { mutableStateOf<GitCommitDiffDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(cwd, commit.hash) {
         runCatching { repo.client.gitCommitDiff(cwd, commit.hash) }
             .onSuccess { detail = it }
-            .onFailure { error = it.message ?: "获取提交详情失败" }
+            .onFailure { error = it.message ?: context.getString(R.string.git_detail_failed) }
     }
 
     DiffScaffold(
         title = commit.subject,
-        subtitle = "${commit.shortHash} · ${commit.author} · ${commit.date.toFriendlyTime()}",
+        subtitle = "${commit.shortHash} · ${commit.author} · ${commit.date.toFriendlyTime(context)}",
         onBack = onBack,
         modifier = modifier,
     ) {
@@ -517,7 +526,7 @@ private fun DiffScaffold(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 title = {

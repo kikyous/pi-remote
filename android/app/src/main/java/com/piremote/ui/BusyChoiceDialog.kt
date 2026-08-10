@@ -1,10 +1,13 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 
 /**
@@ -23,21 +26,21 @@ fun BusyChoiceDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("会话正在运行") },
+        title = { Text(stringResource(R.string.busy_title)) },
         text = {
-            val shown = message.ifBlank { "［图片］" }
+            val shown = message.ifBlank { stringResource(R.string.busy_image_placeholder) }
             Text(
-                "「$shown」\n\n插队会在当前这一轮的工具调用结束后立刻送达；排队则等整轮跑完再送。",
+                stringResource(R.string.busy_message, shown),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis,
             )
         },
         confirmButton = {
-            TextButton(onClick = { onSteer(); onDismiss() }) { Text("插队") }
+            TextButton(onClick = { onSteer(); onDismiss() }) { Text(stringResource(R.string.busy_interrupt)) }
         },
         dismissButton = {
-            TextButton(onClick = { onQueue(); onDismiss() }) { Text("排队") }
+            TextButton(onClick = { onQueue(); onDismiss() }) { Text(stringResource(R.string.busy_queue)) }
         },
     )
 }

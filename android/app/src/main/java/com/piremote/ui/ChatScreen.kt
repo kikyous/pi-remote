@@ -1,5 +1,7 @@
 package com.piremote.ui
 
+import com.piremote.R
+
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -46,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,7 +96,7 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
 
     // Which picker bottom sheet (model / thinking level) is open; opened from
-    // the composer's "更多" menu.
+    // the composer's "More" menu.
     var sheet by remember { mutableStateOf<SessionSheet?>(null) }
 
     val currentModel = state.detail?.model
@@ -175,7 +178,7 @@ fun ChatScreen(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 title = {
@@ -183,7 +186,7 @@ fun ChatScreen(
                         Text(
                             state.detail?.name?.takeIf { it.isNotBlank() }
                                 ?: state.detail?.firstMessage?.lineSequence()?.firstOrNull()?.take(40)
-                                ?: "会话",
+                                ?: stringResource(R.string.chat_session_title),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium,
@@ -197,7 +200,7 @@ fun ChatScreen(
                                     detail.context?.percent?.let {
                                         append(" · Context ${it.roundToInt()}%")
                                     }
-                                    if (detail.running) append(" · 运行中")
+                                    if (detail.running) append(context.getString(R.string.chat_session_running))
                                 },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -209,10 +212,10 @@ fun ChatScreen(
                 },
                 actions = {
                     IconButton(onClick = onOpenGit) {
-                        Icon(Icons.Outlined.Commit, contentDescription = "Git 改动")
+                        Icon(Icons.Outlined.Commit, contentDescription = stringResource(R.string.chat_git_changes))
                     }
                     IconButton(onClick = { store.refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
                 },
             )
@@ -242,7 +245,7 @@ fun ChatScreen(
                     onGenerateTitle = {
                         store.generateTitle { title, err ->
                             scope.launch {
-                                snackbar.showSnackbar(err ?: "已生成标题：$title")
+                                snackbar.showSnackbar(err ?: context.getString(R.string.chat_title_generated, title))
                             }
                         }
                     },
@@ -254,7 +257,7 @@ fun ChatScreen(
                             if (images.isNotEmpty()) {
                                 images.forEach(store::addAttachment)
                             } else {
-                                snackbar.showSnackbar("读取图片失败")
+                                snackbar.showSnackbar(context.getString(R.string.chat_image_read_failed))
                             }
                         }
                     },
@@ -286,7 +289,7 @@ fun ChatScreen(
 
                 state.items.isEmpty() && !streaming.hasContent ->
                     Text(
-                        "这个会话还没有消息",
+                        stringResource(R.string.chat_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.Center),
                     )
@@ -309,7 +312,7 @@ fun ChatScreen(
                             ) {
                                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                                 Text(
-                                    "  加载更早的消息",
+                                    stringResource(R.string.chat_loading_earlier),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -381,7 +384,7 @@ private fun WaitingPulseLine() {
         label = "waiting-pulse-alpha",
     )
     Text(
-        "正在等待模型...",
+        stringResource(R.string.chat_waiting_model),
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
         modifier = Modifier
