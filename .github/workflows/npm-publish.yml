@@ -64,6 +64,19 @@ jobs:
           TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r .value)
           echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{aud, ref, sha, repository, repository_owner, job_workflow_ref, workflow, environment, actor, run_attempt}'
 
+      # Decisive probe: does the registry accept our OIDC token at all?
+      # 401/403 → auth works but account/permission issue;
+      # 404     → the OIDC identity itself is unknown to the registry.
+      - name: Probe registry with raw OIDC token
+        run: |
+          TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r .value)
+          echo "== PUT with OIDC bearer =="
+          curl -sS -o /tmp/resp.txt -w "HTTP %{http_code}\n" -X PUT \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{}' https://registry.npmjs.org/pi-remote-bridge || true
+          head -c 500 /tmp/resp.txt; echo
+
       - name: Publish to npm
         # --provenance triggers npm's OIDC trusted-publishing flow: npm fetches
         # a GitHub OIDC token and authenticates to the registry with it (no
