@@ -58,6 +58,8 @@ jobs:
       # from trusted publishing can be traced to the exact mismatching field.
       - name: Debug OIDC claims
         run: |
+          echo "== whoami (OIDC identity) =="
+          npm whoami 2>&1 || true
           echo "== npmrc =="
           cat "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}" 2>/dev/null | sed 's/_authToken=.*/_authToken=<masked>/'
           echo "== OIDC claims =="
