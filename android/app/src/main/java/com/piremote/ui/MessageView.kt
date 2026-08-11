@@ -291,8 +291,10 @@ private val ChatMarkdownComponents =
 @Composable
 private fun EditDiffView(diff: EditDiff, modifier: Modifier = Modifier) {
     // No horizontal scroll here: per-line backgrounds need a bounded width to
-    // span the card. Long lines wrap instead of scrolling.
-    Column(modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+    // span the card. Long lines wrap instead of scrolling. Vertical is capped
+    // the same way as the other expandable bodies: a long diff scrolls within
+    // the card instead of growing the row unbounded.
+    ExpandableBody(Modifier.padding(bottom = 4.dp)) {
         diff.filePath?.let {
             Text(
                 "--- $it",
@@ -381,14 +383,18 @@ private fun ThinkingCard(
     ) {
         if (open) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            Text(
-                full ?: preview,
-                style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-            )
+            // Height-capped with internal scroll: expanding a card must not
+            // grow the row unbounded, or the layout shift pushes whatever the
+            // user is reading off-screen. 400dp caps the jump, and the body
+            // scrolls within itself when longer.
+            ExpandableBody {
+                Text(
+                    full ?: preview,
+                    style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            }
             if (full == null && truncation != null) {
                 LoadingMore(truncation.displaySize)
             }
@@ -417,17 +423,17 @@ private fun ToolCallRow(
         val diff = call.diff
         if (diff == null && call.arguments.isNotBlank()) {
             // JSON arguments, pi-web style: pre-wrap, dim mono, subtle bg,
-            // hairline divider in the card's tint.
+            // hairline divider in the card's tint. Height-capped with
+            // internal scroll, same as the other expandable bodies.
             ToolDivider(borderColor)
-            Text(
-                call.arguments,
-                style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-            )
+            ExpandableBody(Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))) {
+                Text(
+                    call.arguments,
+                    style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            }
         }
         if (diff != null) {
             ToolDivider(borderColor)
@@ -809,17 +815,41 @@ private fun ZoomableImageDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
  * Long tool output must not force the whole page to scroll sideways, so each
  * block scrolls within itself.
  */
+/**
+ * Shared cap for every expandable body (tool output, bash output, thinking,
+ * arguments, diffs). Keeping them all at one height bounds the layout shift a
+ * card expansion causes: at most this tall of new content appears, never a
+ * row that grows past the screen. This is what makes expansion painless under
+ * either list direction (forward or reverseLayout) — no scroll compensation
+ * ever has to chase an unbounded height.
+ */
+private val MaxExpandableHeight = 400.dp
+
+/**
+ * Height-capped, internally scrollable container for every expandable body.
+ * One place owns the cap and the scroll behaviour, so thinking, tool
+ * arguments, diffs and tool/bash output all expand identically.
+ */
+@Composable
+internal fun ExpandableBody(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .heightIn(max = MaxExpandableHeight)
+            .verticalScroll(rememberScrollState())
+            .then(modifier),
+    ) { content() }
+}
+
 @Composable
 internal fun ScrollableCode(text: String, error: Boolean = false) {
     // pi-web output block: 12px mono, line-height 1.5, pre-wrap (soft wraps long
     // lines instead of scrolling horizontally), capped at 400dp with internal
     // vertical scroll. Error text uses the card's red for consistency.
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(max = 400.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
+    ExpandableBody {
         Text(
             text,
             style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),

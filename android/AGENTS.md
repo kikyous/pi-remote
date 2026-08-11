@@ -66,8 +66,13 @@
 
 ### 反向列表 + 尾部优先分页
 
-`LazyColumn(reverseLayout = true)`，数据传 `items.asReversed()`。首屏只取尾部 50 条，滚到
-顶部附近用 `oldestId` 作游标续拉。`SessionStore.MAX_ITEMS = 400` 是内存上限。
+`LazyColumn(reverseLayout = true)`，数据传 `items.asReversed()`（store 保持旧→新，index 0 =
+最新 = 视觉底部）。**底部锚定让 stick/滚动补偿机制整个删掉了**：新消息 prepend 到 index 0
+自动可见、翻历史时不打扰、流式向上生长、首屏就是最新消息，全部零代码。
+展开中间卡片靠 `MaxExpandableHeight = 400.dp` 限高 + 卡片内部滚动（`MessageView.kt`）
+控制布局位移，不再需要锚点补偿。首屏只取尾部 50 条，滚到顶部（reverseLayout 下=最高
+index 端，分页触发看 `lastVisible`）用 `oldestId` 作游标续拉。
+`SessionStore.MAX_ITEMS = 400` 是内存上限。
 
 实测：打开 2.7MB / 984 条的会话，Java heap 稳定在 12–14MB。
 

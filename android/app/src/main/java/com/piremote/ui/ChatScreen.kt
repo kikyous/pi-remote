@@ -11,13 +11,13 @@ import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -66,7 +66,6 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 
 
@@ -122,81 +121,17 @@ fun ChatScreen(
         onDispose { onUnfollow(store.sessionId) }
     }
 
-    // Whether the list should keep itself pinned to the newest content.
-    //
-    // Only a scroll the user actually drove may change it. Deciding from the
-    // layout instead would get this wrong twice: the viewport shrinks under the
-    // list whenever the composer pads up for the keyboard, and settling a last
-    // item taller than the screen takes two passes — both leave the bottom out
-    // of sight for a moment with the user's finger nowhere near the screen, and
-    // both would read as "they scrolled away".
-    var stick by remember(store) { mutableStateOf(true) }
-    LaunchedEffect(listState, store) {
-        var userDriven = false
-        launch {
-            listState.interactionSource.interactions.collect {
-                if (it is DragInteraction.Start) {
-                    userDriven = true
-                    // Drop the follow the instant a finger takes hold, not when
-                    // the scroll finally settles. Flinging up pulls the newest
-                    // item off screen, which moves the trigger below; waiting
-                    // for the fling to end leaves a window where that trigger
-                    // still sees stick == true and yanks the list back down.
-                    stick = false
-                }
-            }
-        }
-        snapshotFlow { listState.isScrollInProgress }
-            .drop(1) // the initial idle state is not a settled scroll
-            .filter { !it }
-            .collect {
-                // Where they came to rest decides whether following resumes.
-                if (userDriven) {
-                    userDriven = false
-                    stick = !listState.canScrollForward
-                }
-            }
-    }
-
-    // One effect for every way the newest content can leave the viewport: the
-    // first page landing, a message arriving, the streaming card growing, the
-    // keyboard shrinking the list.
-    //
-    // The trigger is read from the layout, not from the state that caused it,
-    // because the correction has to run *after* the layout it corrects. An
-    // effect keyed on the item list or on the IME inset runs between
-    // composition and measure: the list is still its old height, so one already
-    // at the bottom has no room left to scroll and the correction is silently
-    // dropped — which is how the newest messages ended up behind the keyboard.
-    //
-    // Sampling a few specific quantities, never the layout as a whole: that
-    // feeds each scroll back into its own trigger, and one scroll landing
-    // slightly short then spins forever, forcing a synchronous remeasure per
-    // frame until the UI locks up.
-    LaunchedEffect(listState, store) {
-        snapshotFlow {
-            val info = listState.layoutInfo
-            val lastIndex = info.totalItemsCount - 1
-            Triple(
-                info.viewportSize.height,
-                info.totalItemsCount,
-                // Height of the newest item while it is on screen — this is
-                // what grows as a reply streams in. Scrolling *does* disturb
-                // it: fling away from the bottom and the item leaves the
-                // visible window, dropping this to 0. That is why `stick` is
-                // cleared when the drag starts rather than when it settles —
-                // otherwise this fires mid-fling and hauls the list back down.
-                info.visibleItemsInfo.lastOrNull()?.takeIf { it.index == lastIndex }?.size ?: 0,
-            )
-        }
-            .distinctUntilChanged()
-            .collect {
-                if (stick && !listState.isScrollInProgress) listState.scrollToBottom()
-            }
-    }
+    // No stick-to-bottom machinery: with reverseLayout the newest content IS
+    // the bottom anchor. New messages prepend at index 0 (bottom) and stay in
+    // view while the user is at the bottom; when reading history they land
+    // outside the viewport and leave what is on screen untouched. Streaming
+    // grows upward from the anchored bottom. The initial scroll position is
+    // already the latest message. None of this needs an effect that chases
+    // the layout.
 
     // Fetch the previous page as the top of the loaded range comes into view.
-    // Forward layout: older messages live at the START (low indices).
+    // reverseLayout: older messages live at the END (highest indices, the
+    // visually top rows), so the trigger is the LAST visible item.
     LaunchedEffect(store, listState) {
         // One page per gesture, re-armed by the next drag.
         //
@@ -206,9 +141,10 @@ fun ChatScreen(
         // their call), the top stays in view, the flag never leaves `true` and
         // never re-fires — paging dies with the loader still sitting there.
         // But re-evaluating on item count alone runs away instead: the loader
-        // holds index 0, so a reader parked at the very top keeps reporting
-        // index 0 no matter how much history lands underneath it, and the list
-        // pages itself back to the start of the session in one burst.
+        // holds the highest index, so a reader parked at the very top keeps
+        // reporting the last visible item at the end of the list no matter how
+        // much history lands above it, and the list pages itself back to the
+        // start of the session in one burst.
         var armed = true
         launch {
             listState.interactionSource.interactions.collect {
@@ -217,10 +153,12 @@ fun ChatScreen(
         }
         snapshotFlow {
             val info = listState.layoutInfo
-            (info.visibleItemsInfo.firstOrNull()?.index ?: 0) to info.totalItemsCount
+            val lastIndex = info.totalItemsCount - 1
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            (lastIndex - lastVisible) to info.totalItemsCount
         }
             .distinctUntilChanged()
-            .filter { (first, _) -> first <= PREFETCH_DISTANCE }
+            .filter { (remaining, _) -> remaining <= PREFETCH_DISTANCE }
             .collect {
                 // A list too short to scroll cannot re-arm itself — there is no
                 // gesture to make — so keep paging until one is possible.
@@ -369,8 +307,55 @@ fun ChatScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+                        // reverseLayout: index 0 is the BOTTOM, so the newest
+                        // content anchors there. New messages and streaming
+                        // stay in view at the bottom with zero scroll
+                        // bookkeeping, and the initial scroll position is
+                        // already the latest message.
+                        reverseLayout = true,
+                        contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
+                    // Bottom of the list (index 0): live content. The waiting
+                    // pulse shows only while the agent runs with nothing yet;
+                    // the two states are mutually exclusive.
+                    when {
+                        streaming.hasContent || streaming.compacting ->
+                            item(key = "streaming") {
+                                StreamingBubble(
+                                    text = streaming.text,
+                                    thinking = streaming.thinking,
+                                    thinkingText = streaming.thinkingText,
+                                    toolName = streaming.activeTool?.name,
+                                    toolSubtitle = streaming.activeTool?.subtitle,
+                                    toolOutput = streaming.activeTool?.partialOutput.orEmpty(),
+                                    compacting = streaming.compacting,
+                                )
+                            }
+                        streaming.running ->
+                            item(key = "waiting-pulse") { WaitingPulseLine() }
+                    }
+
+                    // Data stays chronological; asReversed() puts the newest
+                    // item at index 0 (bottom), drawing the conversation from
+                    // the bottom up. Expanding a mid-chat card shifts layout
+                    // by at most MaxExpandableHeight (every expandable body
+                    // scrolls within itself) and the bottom anchor holds — no
+                    // stick, no scroll-to-end chasing.
+                    // animateItem placement-only: fades would play when the
+                    // older page is appended at the top (fading in mid-scroll).
+                    items(state.items.asReversed(), key = { it.entryId }) { item ->
+                        MessageView(
+                            item = item,
+                            expanded = state.expanded,
+                            onExpand = store::expand,
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(durationMillis = 0),
+                                fadeOutSpec = tween(durationMillis = 0),
+                            ),
+                        )
+                    }
+
+                    // Top of the list (highest index): older history.
                     if (state.hasMore) {
                         item(key = "older-loader") {
                             // The spinner tracks loadingOlder, not hasMore: this
@@ -398,44 +383,6 @@ fun ChatScreen(
                             }
                         }
                     }
-
-                    // Forward layout: oldest first, newest at the end. Expanding
-                    // a mid-chat card then naturally pushes newer messages DOWN
-                    // (top-anchored) — no scroll compensation needed at all.
-                    // animateItem placement-only: fades would play when the older
-                    // page is prepended at the top (items fading in mid-scroll).
-                    items(state.items, key = { it.entryId }) { item ->
-                        MessageView(
-                            item = item,
-                            expanded = state.expanded,
-                            onExpand = store::expand,
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = tween(durationMillis = 0),
-                                fadeOutSpec = tween(durationMillis = 0),
-                            ),
-                        )
-                    }
-
-                    if (streaming.hasContent || streaming.compacting) {
-                        item(key = "streaming") {
-                            StreamingBubble(
-                                text = streaming.text,
-                                thinking = streaming.thinking,
-                                thinkingText = streaming.thinkingText,
-                                toolName = streaming.activeTool?.name,
-                                toolSubtitle = streaming.activeTool?.subtitle,
-                                toolOutput = streaming.activeTool?.partialOutput.orEmpty(),
-                                compacting = streaming.compacting,
-                            )
-                        }
-                    }
-
-                    // pi-web's waiting hint: while the agent runs but has not
-                    // produced any content yet (before the first token / thinking
-                    // / tool card), show a pulsing line instead of empty space.
-                    if (streaming.running && !streaming.hasContent && !streaming.compacting) {
-                        item(key = "waiting-pulse") { WaitingPulseLine() }
-                    }
                     }
                 }
             }
@@ -445,31 +392,6 @@ fun ChatScreen(
 
 /** How close to the loaded top to get before fetching the next page. */
 private const val PREFETCH_DISTANCE = 8
-
-/**
- * Scroll so the end of the last item rests against the bottom of the viewport.
- *
- * [LazyListState.scrollToItem] alone is not enough: it aligns the item's *top*
- * with the top of the viewport, and the last item here is regularly taller than
- * the screen — a long tool card or a streaming reply. Landing on its head would
- * show the oldest part of exactly the content the user is waiting to read, so
- * whatever hangs past the bottom is scrolled away in a second pass.
- */
-private suspend fun LazyListState.scrollToBottom() {
-    val lastIndex = layoutInfo.totalItemsCount - 1
-    if (lastIndex < 0) return
-    // Short of the end the list clamps this to its last scroll position, which
-    // is already the bottom alignment for an item that fits on screen.
-    scrollToItem(lastIndex)
-    // scrollToItem forces a remeasure, so layoutInfo is current here. Measure
-    // the overhang directly rather than deriving it from the viewport bounds:
-    // getting that arithmetic wrong leaves the list a few pixels short, and
-    // "short" is indistinguishable from "needs scrolling" on the next pass.
-    val last = layoutInfo.visibleItemsInfo.lastOrNull() ?: return
-    if (last.index != lastIndex) return
-    val overhang = last.offset + last.size - layoutInfo.viewportEndOffset
-    if (overhang > 0) scroll { scrollBy(overhang.toFloat()) }
-}
 
 /**
  * pi-web's "Waiting for model..." — a pulsing text line at the bottom of the

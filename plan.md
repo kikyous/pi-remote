@@ -122,8 +122,11 @@ WS `/ws?token=`：客户端 `{op:"subscribe", sessionId, sinceEntryId?}`，服�
 `SessionStore` 持有自己的 `StateFlow`（LRU 保 3~5 个），切换只是换订阅；每个请求携带 epoch，
 对不上就丢弃；Compose 侧 `key(sessionId) { ChatScreen() }` 强制重建。
 
-**长会话不崩** —— 首屏尾部 50 条，`LazyColumn(reverseLayout = true)`；向上滚用 `oldestId`
-作游标续拉并保持锚点；内存上限 400 条，超出丢弃最旧并记游标。
+**长会话不崩** —— 首屏尾部 50 条，`LazyColumn(reverseLayout = true)`，数据传
+`items.asReversed()`（index 0 = 最新 = 底部锚点）；向上滚（高 index 端）用 `oldestId`
+作游标续拉；内存上限 400 条，超出丢弃最旧并记游标。
+底部锚定后不再需要 stick/滚动补偿：新消息、流式、键盘、首屏全部免费；
+展开卡片靠 400dp 限高 + 卡片内部滚动（方案 2）控制位移。
 
 **流式不掉帧** —— `text_delta` 每秒上百条，逐条 recompose 会卡死。流式文本单独放一个
 `MutableState<String>`，只有最后一条气泡订阅；delta 经 `Channel(CONFLATED)` + ~33ms 定时
