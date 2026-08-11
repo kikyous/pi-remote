@@ -1,4 +1,4 @@
-name: Publish npm package
+name: npm-publish.yml
 
 # Publish pi-remote-server to npm:
 #   - on any v* tag push (e.g. `git tag v0.2.0 && git push origin v0.2.0`)
@@ -58,8 +58,6 @@ jobs:
       # from trusted publishing can be traced to the exact mismatching field.
       - name: Debug OIDC claims
         run: |
-          echo "== whoami (OIDC identity) =="
-          npm whoami 2>&1 || true
           echo "== npmrc =="
           cat "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}" 2>/dev/null | sed 's/_authToken=.*/_authToken=<masked>/'
           echo "== OIDC claims =="
@@ -67,13 +65,7 @@ jobs:
           echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{aud, ref, sha, repository, repository_owner, job_workflow_ref, workflow, environment, actor, run_attempt}'
 
       - name: Publish to npm
-        # --provenance attaches an OIDC-verified provenance attestation to the
-        # published package; it is what Trusted Publishing keys off of.
-        # --loglevel verbose surfaces the OIDC exchange; on failure we dump the
-        # full npm debug log for diagnosis.
-        run: |
-          npm publish --provenance --loglevel verbose || {
-            echo "===== npm debug log ====="
-            cat "$(ls -t "$HOME/.npm/_logs/"*.log 2>/dev/null | head -1)" 2>/dev/null || true
-            exit 1
-          }
+        # --provenance triggers npm's OIDC trusted-publishing flow: npm fetches
+        # a GitHub OIDC token and authenticates to the registry with it (no
+        # NODE_AUTH_TOKEN on purpose — a stray token would take precedence).
+        run: npm publish --provenance --loglevel verbose
