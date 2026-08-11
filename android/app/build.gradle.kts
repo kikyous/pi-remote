@@ -17,9 +17,22 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        // Release signing key. Credentials live in ~/.gradle/gradle.properties
+        // (user-level, NOT committed): piremoteReleaseStoreFile/StorePassword/
+        // KeyAlias/KeyPassword. Never put the keystore or its password in git.
+        create("release") {
+            storeFile = file(providers.gradleProperty("piremoteReleaseStoreFile").get())
+            storePassword = providers.gradleProperty("piremoteReleaseStorePassword").get()
+            keyAlias = providers.gradleProperty("piremoteReleaseKeyAlias").get()
+            keyPassword = providers.gradleProperty("piremoteReleaseKeyPassword").get()
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
