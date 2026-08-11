@@ -1,12 +1,16 @@
 {
   "name": "pi-remote-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LAN bridge server exposing the pi coding agent to the Pi Remote Android app",
   "license": "MIT",
   "type": "module",
   "files": [
-    "src"
+    "src",
+    "bin"
   ],
+  "bin": {
+    "pi-remote-bridge": "./bin/pi-remote-bridge.js"
+  },
   "engines": {
     "node": ">=22.19.0"
   },
