@@ -85,15 +85,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // In-app QR scanner: CameraX preview + ML Kit barcode analysis, all inside
-    // our own Compose UI (the zxing CaptureActivity shipped its own activity
-    // locked to sensorLandscape, which is exactly the bug we do not want back).
-    // 17.2.0 = bundled model: works without Google Play services.
-    implementation("androidx.camera:camera-core:1.3.4")
-    implementation("androidx.camera:camera-camera2:1.3.4")
-    implementation("androidx.camera:camera-lifecycle:1.3.4")
-    implementation("androidx.camera:camera-view:1.3.4")
-    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    // In-app QR scanner: zxing-android-embedded's DecoratedBarcodeView (zxing
+    // core + its own Camera2 wrapper, no ML Kit → no tflite models / native libs).
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     // Renders the settled assistant reply as Markdown (streaming stays plain text).
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.43.0")

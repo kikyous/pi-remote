@@ -80,9 +80,10 @@ Two workflows live in `.github/workflows/`:
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `npm-publish.yml` | push a `v*` tag | typecheck + test, then publishes `pi-remote-bridge` to npm (version synced to the tag) |
-| `android-build.yml` | push / PR / manual | runs unit tests, builds the debug APK, uploads it as an artifact — and attaches it to the GitHub Release on `v*` tags |
+| `android-build.yml` | push / PR / manual | runs unit tests, builds a **signed release APK** when keystore secrets are set (falls back to debug), uploads it as an artifact — and attaches it to the GitHub Release on `v*` tags |
 
 - npm publishing needs an **`NPM_TOKEN`** repository secret (npm access token).
+- Signed APK releases need four repository secrets: **`KEYSTORE_BASE64`** (the keystore file, base64-encoded), **`KEYSTORE_PASSWORD`**, **`KEY_ALIAS`**, **`KEY_PASSWORD`**. Without them the workflow still runs but ships the debug APK instead.
 - Tag `v0.2.0` → publishes `pi-remote-bridge@0.2.0` and a release with the APK attached.
 
 ---

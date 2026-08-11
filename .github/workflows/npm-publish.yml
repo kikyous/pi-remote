@@ -39,8 +39,11 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Tag pushes sync the version to the tag (v0.2.0 → 0.2.0). Manual
+      # workflow_dispatch runs skip this and publish the version already in
+      # package.json (GITHUB_REF_NAME is a branch name, not a version).
       - name: Sync package version with git tag
-        # e.g. tag v0.2.0  ->  package.json "version": "0.2.0"
+        if: github.ref_type == 'tag'
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - name: Publish to npm

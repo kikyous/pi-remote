@@ -5,6 +5,7 @@ node_modules/
 .gradle/
 build/
 local.properties
+android/keystore/
 .idea/
 *.iml
 captures/

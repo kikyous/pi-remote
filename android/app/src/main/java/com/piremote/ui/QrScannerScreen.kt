@@ -1,18 +1,9 @@
 package com.piremote.ui
 
-import com.piremote.R
-
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
-import android.view.ViewGroup
+import android.view.View
 import android.widget.Toast
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -59,26 +50,29 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.ResultPoint
+import com.journeyapps.barcodescanner.BarcodeCallback
+import com.journeyapps.barcodescanner.BarcodeResult
+import com.journeyapps.barcodescanner.DecoratedBarcodeView
+import com.journeyapps.barcodescanner.DefaultDecoderFactory
+import com.piremote.R
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Full-screen QR scanner: CameraX [PreviewView] + ML Kit [Barcode] analysis,
- * rendered entirely in Compose so orientation follows the device and the UI
- * matches the app's Material 3 dark theme.
+ * Full-screen QR scanner backed by zxing-android-embedded's [DecoratedBarcodeView]
+ * (zxing core decoding + its own Camera2 preview, no ML Kit). The view follows
+ * device orientation, so the app stays portrait in hand and free to rotate on a
+ * tablet — the CaptureActivity lock-to-sensorLandscape bug stays avoided.
  *
- * Fires [onScanned] once with the raw QR payload, then stops analysing. The
- * caller dismisses this screen. [onDismiss] is the back/cancel path.
+ * Fires [onScanned] once with the raw QR payload, then stops. The caller
+ * dismisses this screen. [onDismiss] is the back/cancel path.
  */
 @Composable
 fun QrScannerScreen(
@@ -89,85 +83,66 @@ fun QrScannerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val analyzerExecutor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
     val done = remember { AtomicBoolean(false) }
-    val previewViewRef = remember { mutableStateOf<PreviewView?>(null) }
-    var torchOn by remember { mutableStateOf(false) }
-    var torchAvailable by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var torchController: ((Boolean) -> Unit)? by remember { mutableStateOf(null) }
-
-    // First scan wins; later frames (same QR re-detected, or a new QR) are ignored.
-    val onDetected: (String) -> Unit = remember {
-        { value ->
-            if (done.compareAndSet(false, true)) mainHandler.post { onScanned(value) }
-        }
-    }
+    var flashlightOn by remember { mutableStateOf(false) }
+    val barcodeView = remember { DecoratedBarcodeView(context) }
 
     DisposableEffect(lifecycleOwner) {
-        val providerFuture = ProcessCameraProvider.getInstance(context)
-        var provider: ProcessCameraProvider? = null
-        var analysis: ImageAnalysis? = null
-
-        providerFuture.addListener(
-            {
-                try {
-                    val cameraProvider = providerFuture.get()
-                    provider = cameraProvider
-                    val preview = Preview.Builder().build()
-                    analysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .also { it.setAnalyzer(analyzerExecutor, QrAnalyzer(onDetected)) }
-                    val camera = cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        analysis,
-                    )
-                    torchAvailable = camera.cameraInfo.hasFlashUnit()
-                    torchController = { enabled -> camera.cameraControl.enableTorch(enabled) }
-                    previewViewRef.value?.surfaceProvider?.let { preview.setSurfaceProvider(it) }
-                } catch (err: Exception) {
-                    Log.e("QrScanner", "camera bind failed", err)
-                    error = context.getString(
-                        R.string.qr_camera_failed,
-                        err.message ?: err.javaClass.simpleName,
-                    )
+        // QR codes only; first result wins (later frames are ignored).
+        barcodeView.decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
+        barcodeView.decodeSingle(object : BarcodeCallback {
+            override fun barcodeResult(result: BarcodeResult) {
+                val text = result.text
+                if (!text.isNullOrBlank() && done.compareAndSet(false, true)) {
+                    mainHandler.post { onScanned(text) }
                 }
-            },
-            ContextCompat.getMainExecutor(context),
-        )
+            }
+
+            override fun possibleResultPoints(resultPoints: List<ResultPoint>) = Unit
+        })
+
+        // Hide the library's built-in viewfinder/status text; the Compose layer
+        // below draws our own scrim + frame so the look matches the app theme.
+        barcodeView.viewFinder.visibility = View.GONE
+        barcodeView.statusView?.visibility = View.GONE
+
+        // Resume/pause with the screen lifecycle. A camera failure (e.g. the
+        // permission was revoked mid-flight) is terminal: toast and bail out.
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> try {
+                    barcodeView.resume()
+                } catch (t: Throwable) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.qr_camera_failed, t.message ?: t.javaClass.simpleName),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    onDismiss()
+                }
+                Lifecycle.Event.ON_PAUSE -> barcodeView.pause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
 
         onDispose {
-            provider?.unbindAll()
-            analysis?.clearAnalyzer()
-            analyzerExecutor.shutdown()
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            barcodeView.pause()
         }
     }
 
-    // A camera failure is terminal for this screen: surface it and go back.
-    LaunchedEffect(error) {
-        if (error != null) {
-            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-            onDismiss()
+    // Torch is best-effort: some devices lack a flash unit, setTorch* just no-ops.
+    LaunchedEffect(flashlightOn) {
+        try {
+            if (flashlightOn) barcodeView.setTorchOn() else barcodeView.setTorchOff()
+        } catch (_: Throwable) {
         }
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
-            factory = { ctx ->
-                PreviewView(ctx).also { view ->
-                    // TextureView so the scrim/UI drawn on top layers correctly.
-                    view.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                    view.scaleType = PreviewView.ScaleType.FILL_CENTER
-                    view.layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
-                    previewViewRef.value = view
-                }
-            },
+            factory = { barcodeView },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -239,15 +214,9 @@ fun QrScannerScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = Color.White)
             }
             Text(stringResource(R.string.qr_autoconnect), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
-            IconButton(
-                enabled = torchAvailable,
-                onClick = {
-                    torchOn = !torchOn
-                    torchController?.invoke(torchOn)
-                },
-            ) {
+            IconButton(onClick = { flashlightOn = !flashlightOn }) {
                 Icon(
-                    if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
+                    if (flashlightOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
                     contentDescription = stringResource(R.string.qr_flashlight),
                     tint = Color.White,
                 )
@@ -259,29 +228,3 @@ fun QrScannerScreen(
 /** Size of the scan window and its corner radius — shared by the scrim cut-out and the frame. */
 private val VIEWFINDER = 280.dp
 private val CORNER_RADIUS = 20.dp
-
-/**
- * ML Kit analyzer: each frame is fed to the barcode scanner; the first QR code
- * found reports its raw value. Every ImageProxy is closed in onComplete so
- * frames never leak, with KEEP_ONLY_LATEST keeping the pipeline current.
- */
-private class QrAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.Analyzer {
-    private val scanner = BarcodeScanning.getClient(
-        BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
-    )
-
-    override fun analyze(imageProxy: ImageProxy) {
-        val mediaImage = imageProxy.image
-        if (mediaImage == null) {
-            imageProxy.close()
-            return
-        }
-        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        scanner.process(image)
-            .addOnSuccessListener { barcodes ->
-                val value = barcodes.firstOrNull()?.rawValue
-                if (!value.isNullOrBlank()) onDetected(value)
-            }
-            .addOnCompleteListener { imageProxy.close() }
-    }
-}

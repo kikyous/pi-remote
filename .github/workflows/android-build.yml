@@ -1,12 +1,13 @@
 name: Build Android APK
 
 # Builds the Android app on every push / PR and on demand:
-#   - debug APK is uploaded as a workflow artifact
+#   - a signed APK is uploaded as a workflow artifact
 #   - on v* tag pushes the APK is also attached to the GitHub Release
 #
-# Release signing is not configured yet; the artifact is the debug-signed APK
-# (installable on any device). To ship signed releases, add KEYSTORE_* secrets
-# and a signingConfig in android/app/build.gradle.kts.
+# Release signing is opt-in via repository secrets. When KEYSTORE_BASE64 is
+# set (plus KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD), the workflow decodes
+# it into android/keystore/release.jks and builds a signed release APK. Without
+# those secrets it falls back to the debug APK so the build never breaks.
 
 on:
   push:
@@ -35,15 +36,65 @@ jobs:
         working-directory: android
         run: ./gradlew testDebugUnitTest --no-daemon
 
-      - name: Build debug APK
+      # Opt-in release signing: decode the keystore only when the secret is set.
+      # (secrets cannot be referenced in `if:` conditionals, so guard in bash.)
+      # The keystore path and passwords are then written into the same user-level
+      # ~/.gradle/gradle.properties that the local signing config reads, so the
+      # existing piremoteRelease* properties work on CI unchanged.
+      - name: Decode release keystore (if configured)
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            mkdir -p keystore
+            echo "$KEYSTORE_BASE64" | base64 -d > keystore/release.jks
+            mkdir -p "$HOME/.gradle"
+            {
+              echo "piremoteReleaseStoreFile=$(pwd)/keystore/release.jks"
+              echo "piremoteReleaseStorePassword=$KEYSTORE_PASSWORD"
+              echo "piremoteReleaseKeyAlias=$KEY_ALIAS"
+              echo "piremoteReleaseKeyPassword=$KEY_PASSWORD"
+            } >> "$HOME/.gradle/gradle.properties"
+            ls -l keystore/release.jks
+          else
+            echo "KEYSTORE_BASE64 not set — falling back to debug APK"
+          fi
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Build APK (release if signed, else debug)
+        working-directory: android
+        run: |
+          if [ -f keystore/release.jks ]; then
+            ./gradlew assembleRelease --no-daemon
+          else
+            ./gradlew assembleDebug --no-daemon
+          fi
+
+      - name: Prepare APK for upload
+        working-directory: android
+        run: |
+          mkdir -p app/build/outputs
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            # Signed release build succeeded.
+            cp app/build/outputs/apk/release/app-release.apk app/build/outputs/pi-remote.apk
+          elif [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            # Fallback: debug build.
+            cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/pi-remote.apk
+          else
+            # e.g. the keystore was decoded but signing config failed — the
+            # release output would be app-release-unsigned.apk, not app-release.apk.
+            echo "No installable APK produced. If signing was expected, check the keystore secrets." >&2
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pi-remote-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: pi-remote-apk
+          path: android/app/build/outputs/pi-remote.apk
           if-no-files-found: error
 
   # Attach the APK to the GitHub Release when a version tag is pushed.
@@ -56,9 +107,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: pi-remote-debug-apk
+          name: pi-remote-apk
           path: apk
 
       - uses: softprops/action-gh-release@v2
         with:
           files: apk/**/*.apk
+          # Allow re-running a tag push over an existing release, and let GitHub
+          # auto-generate release notes from merged PRs.
+          allowUpdates: true
+          generate_release_notes: true
