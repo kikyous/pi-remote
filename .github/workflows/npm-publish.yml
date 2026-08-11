@@ -77,6 +77,16 @@ jobs:
             -d '{}' https://registry.npmjs.org/pi-remote-bridge || true
           head -c 500 /tmp/resp.txt; echo
 
+      # Which OIDC audience does the registry accept? Probe several and watch
+      # for a status other than 404 (which would mean the token was understood).
+      - name: Probe OIDC audiences
+        run: |
+          for AUD in sigstore "https://registry.npmjs.org" npm "registry.npmjs.org" "https://github.com/nicedoc/pi"; do
+            TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUD}" | jq -r .value)
+            CODE=$(curl -sS -o /tmp/r.txt -w "%{http_code}" -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}' https://registry.npmjs.org/pi-remote-bridge || echo ERR)
+            echo "aud=$AUD -> HTTP $CODE"
+          done
+
       - name: Publish to npm
         # --provenance triggers npm's OIDC trusted-publishing flow: npm fetches
         # a GitHub OIDC token and authenticates to the registry with it (no
