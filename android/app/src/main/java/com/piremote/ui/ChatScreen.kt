@@ -96,6 +96,43 @@ fun ChatScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // reverseLayout pins the newest content at the bottom for free only while
+    // the list rests there: a message prepended below the viewport stays
+    // below it, because LazyColumn key-anchors on the first visible item
+    // instead of re-anchoring to the bottom. One rule covers it — follow
+    // while the user has not scrolled away, and re-arm the follow the moment
+    // they come back to the bottom (firstVisibleItemIndex == 0). Reading
+    // history is never disturbed: any drag clears the follow until the list
+    // returns to index 0.
+    var follow by remember(store) { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect {
+            if (it is DragInteraction.Start) follow = false
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .filter { !it }
+            .collect { if (listState.firstVisibleItemIndex == 0) follow = true }
+    }
+    // Newest content growing (a message landing) shifts the count; paging
+    // history in shifts it too, but then follow is false. Streaming growth
+    // and the keyboard change no count and need nothing here — the bottom
+    // anchor already holds them.
+    LaunchedEffect(listState, store) {
+        snapshotFlow { listState.layoutInfo.totalItemsCount }
+            .distinctUntilChanged()
+            .collect {
+                if (follow && !listState.isScrollInProgress) listState.scrollToItem(0)
+            }
+    }
+
+    // Sending always returns the view to the newest content: the message
+    // lands at index 0 (the bottom anchor) once the server echoes it back,
+    // and the follow above then keeps it in view. A reader mid-history would
+    // otherwise never see their own message.
+    val scrollToLatest: () -> Unit = { scope.launch { listState.animateScrollToItem(0) } }
+
     // Which picker bottom sheet (model / thinking level) is open; opened from
     // the composer's "More" menu.
     var sheet by remember { mutableStateOf<SessionSheet?>(null) }
@@ -120,14 +157,6 @@ fun ChatScreen(
         onFollow(store.sessionId)
         onDispose { onUnfollow(store.sessionId) }
     }
-
-    // No stick-to-bottom machinery: with reverseLayout the newest content IS
-    // the bottom anchor. New messages prepend at index 0 (bottom) and stay in
-    // view while the user is at the bottom; when reading history they land
-    // outside the viewport and leave what is on screen untouched. Streaming
-    // grows upward from the anchored bottom. The initial scroll position is
-    // already the latest message. None of this needs an effect that chases
-    // the layout.
 
     // Fetch the previous page as the top of the loaded range comes into view.
     // reverseLayout: older messages live at the END (highest indices, the
@@ -241,7 +270,10 @@ fun ChatScreen(
                     onTextChange = store::setDraft,
                     running = streaming.running,
                     queued = streaming.queued,
-                    onSend = { store.send(it) },
+                    onSend = { text ->
+                        scrollToLatest()
+                        store.send(text)
+                    },
                     onAbort = store::abort,
                     onPickModel = { sheet = SessionSheet.Model },
                     onPickThinking = if (canPickThinking) {
@@ -276,8 +308,14 @@ fun ChatScreen(
         state.busyPrompt?.let { pending ->
             BusyChoiceDialog(
                 message = pending.text,
-                onSteer = { store.send(pending.text, "steer", pending.images) },
-                onQueue = { store.send(pending.text, "followUp", pending.images) },
+                onSteer = {
+                    scrollToLatest()
+                    store.send(pending.text, "steer", pending.images)
+                },
+                onQueue = {
+                    scrollToLatest()
+                    store.send(pending.text, "followUp", pending.images)
+                },
                 onDismiss = store::dismissBusyPrompt,
             )
         }
