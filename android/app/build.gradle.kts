@@ -21,18 +21,23 @@ android {
         // Release signing key. Credentials live in ~/.gradle/gradle.properties
         // (user-level, NOT committed): piremoteReleaseStoreFile/StorePassword/
         // KeyAlias/KeyPassword. Never put the keystore or its password in git.
-        create("release") {
-            storeFile = file(providers.gradleProperty("piremoteReleaseStoreFile").get())
-            storePassword = providers.gradleProperty("piremoteReleaseStorePassword").get()
-            keyAlias = providers.gradleProperty("piremoteReleaseKeyAlias").get()
-            keyPassword = providers.gradleProperty("piremoteReleaseKeyPassword").get()
+        // On CI / machines without the properties the signing config is simply
+        // absent and release builds come out unsigned — the Android workflow
+        // only builds debug APKs anyway.
+        if (providers.gradleProperty("piremoteReleaseStoreFile").isPresent) {
+            create("release") {
+                storeFile = file(providers.gradleProperty("piremoteReleaseStoreFile").get())
+                storePassword = providers.gradleProperty("piremoteReleaseStorePassword").get()
+                keyAlias = providers.gradleProperty("piremoteReleaseKeyAlias").get()
+                keyPassword = providers.gradleProperty("piremoteReleaseKeyPassword").get()
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
