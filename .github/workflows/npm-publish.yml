@@ -67,4 +67,11 @@ jobs:
       - name: Publish to npm
         # --provenance attaches an OIDC-verified provenance attestation to the
         # published package; it is what Trusted Publishing keys off of.
-        run: npm publish --provenance
+        # --loglevel verbose surfaces the OIDC exchange; on failure we dump the
+        # full npm debug log for diagnosis.
+        run: |
+          npm publish --provenance --loglevel verbose || {
+            echo "===== npm debug log ====="
+            cat "$(ls -t "$HOME/.npm/_logs/"*.log 2>/dev/null | head -1)" 2>/dev/null || true
+            exit 1
+          }
