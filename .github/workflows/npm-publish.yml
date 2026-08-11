@@ -54,6 +54,16 @@ jobs:
         if: github.ref_type == 'tag'
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
+      # TEMP DIAGNOSIS: print the OIDC claims npm matches against, so a 404
+      # from trusted publishing can be traced to the exact mismatching field.
+      - name: Debug OIDC claims
+        run: |
+          echo "== npmrc =="
+          cat "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}" 2>/dev/null | sed 's/_authToken=.*/_authToken=<masked>/'
+          echo "== OIDC claims =="
+          TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r .value)
+          echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{aud, ref, sha, repository, repository_owner, job_workflow_ref, workflow, environment, actor, run_attempt}'
+
       - name: Publish to npm
         # --provenance attaches an OIDC-verified provenance attestation to the
         # published package; it is what Trusted Publishing keys off of.
