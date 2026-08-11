@@ -68,4 +68,6 @@ jobs:
         # --provenance triggers npm's OIDC trusted-publishing flow: npm fetches
         # a GitHub OIDC token and authenticates to the registry with it (no
         # NODE_AUTH_TOKEN on purpose — a stray token would take precedence).
-        run: npm publish --provenance --loglevel verbose
+        # --loglevel silly dumps the PUT 404 response body, which often carries
+        # the real reason a trusted publisher was rejected.
+        run: npm publish --provenance --loglevel silly
