@@ -78,13 +78,25 @@ fun ChatState.reduce(push: Push): ChatState = when (push) {
     )
 
     is Push.Add -> {
-        val at = items.indexOfFirst { it.id == push.item.id }
+        // Upsert, and the lookup is load-bearing, not defensive: a catch-up
+        // resends items the client already holds (streamed mid-run), which must
+        // replace in place or the same message appears twice. Search from the
+        // newest end: catch-up targets are recent, so the first probe usually
+        // hits; when absent (the common live case) both directions scan the
+        // whole list, so nothing is lost.
+        val at = items.indexOfLast { it.id == push.item.id }
         if (at != -1) copy(items = items.toMutableList().also { it[at] = push.item })
         else appended(push.item)
     }
 
     is Push.Patch -> {
-        val at = items.indexOfFirst { it.id == push.id }
+        // Search from the newest end: a patch almost always targets the item
+        // added last — the streaming assistant message, the running tool row —
+        // so the first probe usually hits instead of scanning up to
+        // [MAX_ITEMS] of history. Ids are unique by protocol, so the direction
+        // is semantically invisible; if a duplicate ever slipped in, "newest
+        // wins" is the right reading anyway.
+        val at = items.indexOfLast { it.id == push.id }
         if (at == -1) this else copy(items = items.toMutableList().also { it[at] = it[at].patched(push) })
     }
 
