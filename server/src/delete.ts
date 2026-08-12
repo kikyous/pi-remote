@@ -2,13 +2,9 @@ import { unlink } from "node:fs/promises";
 
 import { destroy } from "./agent-pool.ts";
 import { HttpError } from "./http.ts";
-import {
-	childCwds,
-	dropPendingSession,
-	findSession,
-	invalidateSessionCache,
-	sessionsByCwd,
-} from "./store.ts";
+import { forgetModel } from "./sessions/model.ts";
+import { forget } from "./sessions/scan.ts";
+import { childCwds, dropPendingSession, requireLocated, sessionsByCwd } from "./store.ts";
 
 /**
  * Delete one session: its JSONL file (or pending placeholder) and any loaded
@@ -17,7 +13,7 @@ import {
  * always safe to remove — pi treats a missing parent as a root.
  */
 export async function deleteSession(sessionId: string): Promise<{ deleted: number }> {
-	const info = await findSession(sessionId);
+	const info = await requireLocated(sessionId);
 	if ((await childCwds(info.path)).length > 0) {
 		throw new HttpError(409, "Session has forked children; delete the forks first", "has_children");
 	}
@@ -58,5 +54,8 @@ async function removeSession(id: string, path: string): Promise<void> {
 	await unlink(path).catch(() => {
 		// Pending sessions have no file yet; ENOENT is expected, not an error.
 	});
-	invalidateSessionCache();
+	// A deletion is the one change `(mtime, size)` cannot express — the file is
+	// simply gone — so both caches are told explicitly.
+	forget(id);
+	forgetModel(path);
 }

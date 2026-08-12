@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import { createSession, createWorkspace, disposeAll, isRunning } from "./agent-pool.ts";
+import { createSession, createWorkspace, disposeAll, isRunning, liveTree } from "./agent-pool.ts";
 import { deleteSession, deleteWorkspace } from "./delete.ts";
 import {
 	abortSession,
@@ -17,6 +17,7 @@ import { buildConnectPayload, renderConnectQr } from "./qr.ts";
 import { gitCommitDiff, gitCommits, gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
 import { API_PREFIX, type PromptImageDto } from "./protocol.ts";
+import { setLiveSource } from "./sessions/model.ts";
 import type { FullPart } from "./slim.ts";
 import { getEntryPage, getFullPart, getSessionDetail, listProjects, listSessions, setRunningProbe } from "./store.ts";
 import { attachWebSocket } from "./ws.ts";
@@ -36,8 +37,10 @@ function main(): void {
 		process.exit(1);
 	}
 
-	// Lets the read-only layer report live state without importing the pool.
+	// Lets the read-only layer see live state without importing the pool, which
+	// would be a cycle. A loaded agent's tree outranks the file on disk.
 	setRunningProbe(isRunning);
+	setLiveSource(liveTree);
 
 	const router = new Router();
 

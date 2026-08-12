@@ -14,7 +14,8 @@ import {
 import { HttpError } from "./http.ts";
 import type { ThinkingLevel } from "./protocol.ts";
 import { slimEvent } from "./slim.ts";
-import { findSession, invalidateSessionCache, registerSession } from "./store.ts";
+import type { EntryTree } from "./sessions/model.ts";
+import { registerSession, requireLocated } from "./store.ts";
 
 /**
  * Owns the live `AgentSession` objects.
@@ -78,6 +79,26 @@ export function isLoaded(sessionId: string): boolean {
 
 export function getLoaded(sessionId: string): LiveAgent | undefined {
 	return agents.get(sessionId);
+}
+
+/**
+ * The in-memory entry tree of a loaded session, for `sessions/model.ts`.
+ *
+ * A loaded agent normally outranks the file: it may hold appends that have not
+ * been flushed yet, so reading the file behind its back serves a view one entry
+ * short. Wired up in `index.ts` rather than imported there, to keep the
+ * read-only layer free of a dependency on this module.
+ *
+ * The exception is a file somebody else appended to. Our tree does not contain
+ * those entries and will not until the next write acquires and reloads, so
+ * handing it to a reader would hide an external pi TUI's messages — which the
+ * file itself shows fine. Declining here sends the reader to the file, and the
+ * agent reloads on its own schedule.
+ */
+export function liveTree(sessionId: string): EntryTree | undefined {
+	const live = agents.get(sessionId);
+	if (!live || wasWrittenByOthers(live)) return undefined;
+	return live.session.sessionManager;
 }
 
 /**
@@ -145,7 +166,7 @@ async function reload(old: LiveAgent): Promise<LiveAgent> {
 }
 
 async function create(sessionId: string): Promise<LiveAgent> {
-	const info = await findSession(sessionId);
+	const info = await requireLocated(sessionId);
 	const sessionManager = SessionManager.open(info.path);
 
 	// No `uiContext` is bound on purpose. The SDK then uses its own no-op
@@ -235,9 +256,7 @@ export async function createSession(
 		modified: now,
 		messageCount: 0,
 		firstMessage: "",
-		allMessagesText: "",
 	});
-	invalidateSessionCache();
 	startSweeper();
 	return sessionId;
 }
@@ -293,6 +312,12 @@ export function withPromptLock<T>(live: LiveAgent, fn: () => Promise<T>): Promis
 function publish(live: LiveAgent, event: AgentSessionEvent): void {
 	live.touchedAt = Date.now();
 
+	// Nothing invalidates the session caches from here, on purpose. They key on
+	// the file's `(mtime, size)`, which an append moves, so the next reader
+	// notices by itself — and re-reads only this one file. The previous code
+	// dropped the whole snapshot on every appended entry, which put a 476ms
+	// rescan of all 135 sessions behind the next request. See `sessions/scan.ts`.
+
 	// Our own appends move the file; refresh the fingerprint so they are not
 	// mistaken for an external writer. The stat is deferred to the next tick
 	// because the SDK emits this event before the write has necessarily reached
@@ -300,7 +325,6 @@ function publish(live: LiveAgent, event: AgentSessionEvent): void {
 	// every one of our own appends look like somebody else's.
 	if (event.type === "entry_appended") {
 		setImmediate(() => Object.assign(live, readStat(live.path)));
-		invalidateSessionCache();
 	} else if (event.type === "message_end") {
 		// The SDK appends the message to the session manager right after
 		// emitting message_end, but the only entry_appended events it emits are
@@ -309,7 +333,6 @@ function publish(live: LiveAgent, event: AgentSessionEvent): void {
 		// the streaming bubble clears, so a conversation built from live events
 		// stays empty until a manual refetch. Forward it on the microtask that
 		// follows the append, when the entry exists to look up.
-		invalidateSessionCache();
 		const message = event.message;
 		if (isPersistedMessage(message)) {
 			queueMicrotask(() => {

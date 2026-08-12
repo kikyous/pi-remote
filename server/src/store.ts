@@ -1,15 +1,11 @@
-import { existsSync } from "node:fs";
 import { basename } from "node:path";
 
-import {
-	estimateTokens,
-	type SessionEntry,
-	type SessionInfo,
-	SessionManager,
-} from "@earendil-works/pi-coding-agent";
+import { estimateTokens, type SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { HttpError } from "./http.ts";
 import type { EntryPageDto, ProjectDto, SessionDetailDto, SessionSummaryDto } from "./protocol.ts";
+import { getModel } from "./sessions/model.ts";
+import { idOfPath, knows, type Located, locate, type SessionSummary, summaries, summaryOf } from "./sessions/scan.ts";
 import { extractFullPart, type FullPart, slimEntry } from "./slim.ts";
 
 /**
@@ -18,88 +14,25 @@ import { extractFullPart, type FullPart, slimEntry } from "./slim.ts";
  * Everything here works off the JSONL files directly — no AgentSession is
  * created. Browsing projects, sessions, and history must stay free of agent
  * startup cost, because that is what makes switching sessions feel instant.
- */
-
-/**
- * `SessionManager.listAll()` walks and parses every session file (~230ms for 79
- * sessions on the dev machine). Cache it briefly so that a list screen doing
- * several requests in a row does not rescan each time. The TTL is far shorter
- * than any human refresh interval, so a pull-to-refresh still returns fresh data.
- */
-const LIST_TTL_MS = 2_000;
-
-interface Snapshot {
-	sessions: SessionInfo[];
-	byId: Map<string, SessionInfo>;
-	byPath: Map<string, SessionInfo>;
-	takenAt: number;
-}
-
-let snapshot: Snapshot | undefined;
-let inFlight: Promise<Snapshot> | undefined;
-
-/**
- * Sessions created through this server that have not hit disk yet.
  *
- * `SessionManager.create()` defers writing the file until the first entry is
- * appended, so a session can exist and be prompt-able while `listAll()` still
- * cannot see it. Without this, the client would 404 on the id it was just
- * handed. Entries are dropped once the real scan picks them up.
+ * The two costs that used to live here — a full `listAll()` rescan for what was
+ * really an `id → path` lookup, and a fresh parse per request — now belong to
+ * `sessions/scan.ts` and `sessions/model.ts`. This file is just the projection
+ * onto the wire types.
  */
-const pending = new Map<string, SessionInfo>();
 
-export function registerSession(info: SessionInfo): void {
-	pending.set(info.id, info);
-}
+export { dropPending as dropPendingSession, registerPending as registerSession } from "./sessions/scan.ts";
 
-async function loadSnapshot(): Promise<Snapshot> {
-	const scanned = await SessionManager.listAll();
-	const byId = new Map<string, SessionInfo>();
-	const byPath = new Map<string, SessionInfo>();
-	for (const info of scanned) {
-		byId.set(info.id, info);
-		byPath.set(info.path, info);
-		// It landed on disk; the placeholder has served its purpose.
-		pending.delete(info.id);
-	}
-
-	const sessions = [...scanned, ...pending.values()];
-	for (const info of pending.values()) {
-		byId.set(info.id, info);
-		byPath.set(info.path, info);
-	}
-
-	return { sessions, byId, byPath, takenAt: Date.now() };
-}
-
-async function getSnapshot(force = false): Promise<Snapshot> {
-	if (!force && snapshot && Date.now() - snapshot.takenAt < LIST_TTL_MS) return snapshot;
-	// Collapse concurrent callers onto one scan.
-	inFlight ??= loadSnapshot()
-		.then((next) => {
-			snapshot = next;
-			return next;
-		})
-		.finally(() => {
-			inFlight = undefined;
-		});
-	return inFlight;
-}
-
-/** Drop the cache. Call after any write that changes the session set. */
-export function invalidateSessionCache(): void {
-	snapshot = undefined;
-}
-
-/** Remove a placeholder that never made it to disk (empty new session). */
-export function dropPendingSession(id: string): void {
-	pending.delete(id);
+/** Resolve a session id to its file, or 404. */
+export async function requireLocated(id: string): Promise<Located> {
+	const located = await locate(id);
+	if (!located) throw new HttpError(404, `No session with id ${id}`, "session_not_found");
+	return located;
 }
 
 /** Sessions whose file (or pending placeholder) lives under `cwd`. */
-export async function sessionsByCwd(cwd: string): Promise<SessionInfo[]> {
-	const { sessions } = await getSnapshot();
-	return sessions.filter((info) => info.cwd === cwd);
+export async function sessionsByCwd(cwd: string): Promise<SessionSummary[]> {
+	return (await summaries()).filter((info) => info.cwd === cwd);
 }
 
 /**
@@ -107,12 +40,11 @@ export async function sessionsByCwd(cwd: string): Promise<SessionInfo[]> {
  * deleting a parent would orphan forks in another workspace.
  */
 export async function childCwds(path: string): Promise<string[]> {
-	const { sessions } = await getSnapshot();
-	return sessions.filter((info) => info.parentSessionPath === path).map((info) => info.cwd);
+	return (await summaries()).filter((info) => info.parentSessionPath === path).map((info) => info.cwd);
 }
 
 export async function listProjects(): Promise<ProjectDto[]> {
-	const { sessions } = await getSnapshot();
+	const sessions = await summaries();
 	const byCwd = new Map<string, { count: number; lastModified: number }>();
 
 	for (const info of sessions) {
@@ -140,35 +72,14 @@ export async function listProjects(): Promise<ProjectDto[]> {
 }
 
 export async function listSessions(cwd: string): Promise<SessionSummaryDto[]> {
-	const snap = await getSnapshot();
-	return snap.sessions
-		.filter((info) => info.cwd === cwd)
-		.map((info) => toSummary(info, snap))
-		.sort((a, b) => b.modified.localeCompare(a.modified));
-}
-
-export async function findSession(id: string): Promise<SessionInfo> {
-	let snap = await getSnapshot();
-	let info = snap.byId.get(id);
-	if (!info) {
-		// A session created moments ago may predate the cached snapshot.
-		snap = await getSnapshot(true);
-		info = snap.byId.get(id);
-	}
-	if (!info) throw new HttpError(404, `No session with id ${id}`, "session_not_found");
-	return info;
-}
-
-export async function toSummaryById(id: string): Promise<SessionSummaryDto> {
-	const snap = await getSnapshot();
-	return toSummary(await findSession(id), snap);
+	return (await sessionsByCwd(cwd)).map(toSummary).sort((a, b) => b.modified.localeCompare(a.modified));
 }
 
 /**
  * Whether a session currently has a streaming agent.
  *
- * The read-only layer has no idea about live agents, so M2 injects the lookup
- * rather than this module importing the pool and creating a cycle.
+ * The read-only layer has no idea about live agents, so the lookup is injected
+ * rather than imported, which would create a cycle.
  */
 let runningProbe: (sessionId: string) => boolean = () => false;
 
@@ -177,30 +88,20 @@ export function setRunningProbe(probe: (sessionId: string) => boolean): void {
 }
 
 export async function getSessionDetail(id: string): Promise<SessionDetailDto> {
-	const snap = await getSnapshot();
-	const info = await findSession(id);
-	const sm = openIfWritten(info.path);
-	const entries = sm?.buildContextEntries() ?? [];
+	const info = await summaryOf(id);
+	if (!info) throw new HttpError(404, `No session with id ${id}`, "session_not_found");
+	// One parse, shared with the `/entries` request that follows on the client's
+	// session-open and with the token estimate below.
+	const model = getModel(info);
+	const entries = model?.entries ?? [];
 
 	return {
-		...toSummary(info, snap),
+		...toSummary(info),
 		...readSettings(entries),
-		leafId: sm?.getLeafId() ?? null,
+		leafId: model?.leafId ?? null,
 		totalEntries: entries.length,
 		running: runningProbe(id),
 	};
-}
-
-/**
- * Open a session file, or undefined when it has not been written yet.
- *
- * A session created via `POST /sessions` has no file until its first entry is
- * appended, and asking the client to special-case that is worse than reporting
- * an empty session.
- */
-function openIfWritten(path: string): SessionManager | undefined {
-	if (!existsSync(path)) return undefined;
-	return SessionManager.open(path);
 }
 
 /**
@@ -211,11 +112,10 @@ function openIfWritten(path: string): SessionManager | undefined {
  */
 export async function estimateSessionTokens(id: string): Promise<number | null> {
 	try {
-		const info = await findSession(id);
-		const sm = openIfWritten(info.path);
-		if (!sm) return null;
+		const model = getModel(await requireLocated(id));
+		if (!model) return null;
 		let tokens = 0;
-		for (const entry of sm.buildContextEntries()) {
+		for (const entry of model.entries) {
 			if (entry.type === "message") tokens += estimateTokens(entry.message);
 		}
 		return tokens;
@@ -227,15 +127,14 @@ export async function estimateSessionTokens(id: string): Promise<number | null> 
 /**
  * One page of history, newest-last, walking backwards from `before`.
  *
- * Uses `buildContextEntries()` rather than `getEntries()`: the session is a
- * tree, and only the active branch (with compaction applied) is what the user
- * is looking at. `getEntries()` would also hand back abandoned branches.
+ * The page comes off the active branch with compaction applied — a session is a
+ * tree, and abandoned branches are not what the user is looking at.
  */
 export async function getEntryPage(id: string, before: string | undefined, limit: number): Promise<EntryPageDto> {
-	const info = await findSession(id);
-	const sm = openIfWritten(info.path);
-	if (!sm) return { entries: [], hasMore: false, oldestId: null, leafId: null };
-	const entries = sm.buildContextEntries();
+	const model = getModel(await requireLocated(id));
+	// A session created moments ago has no file until its first append.
+	if (!model) return { entries: [], hasMore: false, oldestId: null, leafId: null };
+	const entries = model.entries;
 
 	let end = entries.length;
 	if (before !== undefined) {
@@ -253,7 +152,7 @@ export async function getEntryPage(id: string, before: string | undefined, limit
 		entries: page.map(slimEntry),
 		hasMore: start > 0,
 		oldestId: page[0]?.id ?? null,
-		leafId: sm.getLeafId(),
+		leafId: model.leafId,
 	};
 }
 
@@ -264,9 +163,8 @@ export async function getFullPart(
 	part: FullPart,
 	index: number | undefined,
 ): Promise<{ content: string }> {
-	const info = await findSession(id);
-	const sm = SessionManager.open(info.path);
-	const entry = sm.getEntry(entryId);
+	const model = getModel(await requireLocated(id));
+	const entry = model?.entry(entryId);
 	if (!entry) throw new HttpError(404, `No entry ${entryId} in session ${id}`, "entry_not_found");
 
 	const content = extractFullPart(entry, part, index);
@@ -294,13 +192,8 @@ function readSettings(entries: SessionEntry[]): Pick<SessionDetailDto, "model" |
 	return { model, thinkingLevel };
 }
 
-/**
- * Project the SDK's SessionInfo onto the wire type.
- *
- * Notably drops `allMessagesText`, which concatenates the session's text for
- * local search. The client never uses it, so it is pure waste over the network.
- */
-function toSummary(info: SessionInfo, snap: Snapshot): SessionSummaryDto {
+/** Project a scanned summary onto the wire type. */
+function toSummary(info: SessionSummary): SessionSummaryDto {
 	const summary: SessionSummaryDto = {
 		id: info.id,
 		cwd: info.cwd,
@@ -311,8 +204,11 @@ function toSummary(info: SessionInfo, snap: Snapshot): SessionSummaryDto {
 	};
 	if (info.name) summary.name = info.name;
 	if (info.parentSessionPath) {
-		const parent = snap.byPath.get(info.parentSessionPath);
-		if (parent) summary.parentSessionId = parent.id;
+		// The parent's id is in its filename, so this needs no lookup — but it
+		// is only reported while the parent is actually still on disk, or the
+		// client would offer to open a session that no longer exists.
+		const parentId = idOfPath(info.parentSessionPath);
+		if (parentId && knows(parentId)) summary.parentSessionId = parentId;
 	}
 	return summary;
 }

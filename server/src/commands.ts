@@ -12,7 +12,7 @@ import {
 	THINKING_LEVELS,
 	type ThinkingLevel,
 } from "./protocol.ts";
-import { estimateSessionTokens, getEntryPage, getSessionDetail, invalidateSessionCache } from "./store.ts";
+import { estimateSessionTokens } from "./store.ts";
 
 /** Shown for a model whose session is not loaded, so exact support is unknown. */
 const STANDARD_LEVELS = ["off", "minimal", "low", "medium", "high"];
@@ -414,7 +414,8 @@ export async function updateSession(sessionId: string, patch: SessionPatch): Pro
 		updated.push("name");
 	}
 
-	if (updated.length > 0) invalidateSessionCache();
+	// No cache to invalidate: each of these appends an entry, which moves the
+	// file's `(mtime, size)` — the key both session caches validate against.
 	return { updated };
 }
 
