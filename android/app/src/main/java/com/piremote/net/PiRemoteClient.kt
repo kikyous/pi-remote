@@ -46,21 +46,21 @@ class PiRemoteClient(
     suspend fun listSessions(cwd: String): List<SessionSummaryDto> =
         get("sessions?cwd=${encodeCwd(cwd)}")
 
-    suspend fun sessionDetail(id: String): SessionDetailDto = get("sessions/$id")
-
     /**
-     * One page of history. Omit [before] for the newest page; pass the previous
-     * page's `oldestId` to walk backwards.
+     * One page of older history. Pass the previous page's `oldest` to walk back.
+     *
+     * There is no endpoint for the newest page, and none for the session's settings:
+     * both arrive in the WebSocket's `hello`, so opening a session costs one frame
+     * rather than two round trips.
      */
-    suspend fun entries(id: String, before: String? = null, limit: Int = 50): EntryPageDto {
-        val cursor = if (before != null) "&before=$before" else ""
-        return get("sessions/$id/entries?limit=$limit$cursor")
+    suspend fun items(id: String, before: String? = null, limit: Int = 50): ItemPageDto {
+        val cursor = if (before != null) "&before=${before.urlEncoded()}" else ""
+        return get("sessions/$id/items?limit=$limit$cursor")
     }
 
-    suspend fun fullPart(id: String, entryId: String, part: String, index: Int?): FullPartDto {
-        val idx = if (index != null) "&index=$index" else ""
-        return get("sessions/$id/entries/$entryId/full?part=$part$idx")
-    }
+    /** The original behind a `more` handle. The handle is opaque; we just echo it. */
+    suspend fun full(id: String, ref: String): FullContentDto =
+        get("sessions/$id/full?ref=${ref.urlEncoded()}")
 
     suspend fun models(): ModelsResponseDto = get("models")
 
@@ -98,11 +98,8 @@ class PiRemoteClient(
     /** One-tap daily default workspace on the server: `~/pi-cwd-YYYYMMDD`. */
     suspend fun createWorkspace(): WorkspaceDto = post("workspaces", "{}")
 
-    /** Have the model derive a title from the conversation; returns the title. */
-    suspend fun generateTitle(id: String): String {
-        val dto: TitleDto = post("sessions/$id/title", "{}")
-        return dto.title
-    }
+    /** Have the model derive a title from the conversation; answers with the new detail. */
+    suspend fun generateTitle(id: String): SessionDetailDto = post("sessions/$id/title", "{}")
 
     /** Delete a single session (fails with 409 if it has forked children). */
     suspend fun deleteSession(id: String): DeleteResultDto = delete("sessions/$id")
@@ -136,13 +133,14 @@ class PiRemoteClient(
 
     suspend fun abort(id: String): AbortResultDto = post("sessions/$id/abort", "{}")
 
+    /** Answers with the new detail, so no follow-up read is needed. */
     suspend fun updateSession(
         id: String,
         provider: String? = null,
         modelId: String? = null,
         thinkingLevel: String? = null,
         name: String? = null,
-    ): UpdateResultDto = patch(
+    ): SessionDetailDto = patch(
         "sessions/$id",
         buildJsonBody(
             "provider" to provider,

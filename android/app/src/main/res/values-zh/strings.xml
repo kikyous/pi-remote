@@ -85,6 +85,7 @@
     <string name="conn_address">地址</string>
     <string name="conn_manual">手动连接</string>
     <string name="conn_connected">已连接 · 服务端 %1$s</string>
+    <string name="conn_protocol_mismatch">服务端 %1$s 的协议版本是 %2$d，本应用是 %3$d。请升级较旧的一端。</string>
     <string name="conn_failed">连接失败：%1$s</string>
     <string name="conn_qr_invalid">不是 Pi Remote 连接二维码（请扫 PC 控制台启动时打印的码）</string>
     <string name="conn_camera_required">需要相机权限才能扫码</string>

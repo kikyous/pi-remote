@@ -1,78 +1,48 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { type BufferedEvent, computeReplay, todayStamp } from "./agent-pool.ts";
+import { catchUpIds, todayStamp } from "./agent-pool.ts";
 
-/** A buffer holding seqs `from..to`, as the ring buffer would after eviction. */
-function buffer(from: number, to: number): BufferedEvent[] {
-	const out: BufferedEvent[] = [];
-	for (let seq = from; seq <= to; seq++) out.push({ seq, event: { type: "message_update" } });
-	return out;
+/** itemId → the sequence at which it last changed, as the pool records it. */
+function touched(entries: Record<string, number>): Map<string, number> {
+	return new Map(Object.entries(entries));
 }
 
-test("a fresh subscriber gets live events only", () => {
-	const { replay, gap } = computeReplay(buffer(1, 10), 10, undefined);
-
-	assert.deepEqual(replay, []);
-	assert.equal(gap, false);
+test("a fresh subscriber gets a snapshot, not a catch-up", () => {
+	assert.equal(catchUpIds(touched({ a: 1, b: 2 }), 2, undefined), undefined);
 });
 
-test("replays exactly the events after the client's cursor", () => {
-	const { replay, gap } = computeReplay(buffer(1, 12), 12, 4);
+test("only the items that changed after the cursor are named", () => {
+	const stale = catchUpIds(touched({ old: 3, mid: 7, fresh: 11 }), 11, 7);
 
-	assert.equal(gap, false);
-	assert.deepEqual(
-		replay.map((b) => b.seq),
-		[5, 6, 7, 8, 9, 10, 11, 12],
-		"starts one past the cursor, no repeats",
-	);
+	assert.deepEqual([...(stale ?? [])], ["fresh"], "mid changed exactly at the cursor, so it is already there");
 });
 
-test("a client that is already current gets nothing", () => {
-	const { replay, gap } = computeReplay(buffer(1, 10), 10, 10);
+test("a client already current is told about nothing", () => {
+	const stale = catchUpIds(touched({ a: 1, b: 5 }), 5, 5);
 
-	assert.deepEqual(replay, []);
-	assert.equal(gap, false, "being current is not a gap");
+	assert.deepEqual([...(stale ?? [])], []);
 });
 
-test("reports a gap when the missed events have been evicted", () => {
-	// Buffer starts at 50; the client last saw 10, so 11..49 are gone.
-	const { replay, gap } = computeReplay(buffer(50, 100), 100, 10);
-
-	assert.deepEqual(replay, [], "no partial replay — it would look like a complete catch-up");
-	assert.equal(gap, true);
+test("a cursor ahead of the agent asks for a snapshot", () => {
+	// The agent was idle-disposed and rebuilt, so its sequence restarted at 0 while
+	// the client still holds one from the previous incarnation. Treating that as
+	// "nothing to catch up on" would leave the screen showing history from before
+	// the gap, with no way to learn that an external writer changed the session.
+	assert.equal(catchUpIds(touched({}), 0, 7), undefined);
 });
 
-test("the boundary case, cursor exactly one before the buffer, is not a gap", () => {
-	const { replay, gap } = computeReplay(buffer(50, 100), 100, 49);
+test("a long turn is one item to resend, however many pushes it took", () => {
+	// The measured case this replaced a ring buffer for: a 2000-word answer streams
+	// 1042 pushes. All of them touch the same item, so catching up costs one.
+	const streaming = new Map<string, number>();
+	for (let seq = 1; seq <= 1042; seq++) streaming.set("live-1", seq);
 
-	assert.equal(gap, false);
-	assert.equal(replay[0]?.seq, 50, "the whole buffer is still contiguous with the cursor");
-});
-
-test("an empty buffer with a cursor is a gap, not a silent no-op", () => {
-	// Happens when the agent was disposed and reloaded: its buffer is empty but
-	// the client still holds a sequence from the previous incarnation.
-	const { replay, gap } = computeReplay([], 0, 7);
-
-	assert.deepEqual(replay, []);
-	// currentSeq 0 < sinceSeq 7 → the client is ahead of a restarted agent.
-	assert.equal(gap, false, "a restarted agent is not a gap; the client simply has nothing to catch up on");
-});
-
-test("an empty buffer behind the client's cursor reports a gap", () => {
-	const { replay, gap } = computeReplay([], 20, 7);
-
-	assert.deepEqual(replay, []);
-	assert.equal(gap, true);
+	const stale = catchUpIds(streaming, 1042, 3);
+	assert.deepEqual([...(stale ?? [])], ["live-1"]);
 });
 
 test("todayStamp pads day and month to two digits", () => {
-	const d = new Date(2026, 7, 9); // Aug 9
-	assert.equal(todayStamp(d), "20260809");
-});
-
-test("todayStamp uses the server-local date", () => {
-	const d = new Date(2026, 0, 3); // Jan 3
-	assert.equal(todayStamp(d), "20260103");
+	assert.equal(todayStamp(new Date(2026, 0, 5)), "20260105");
+	assert.equal(todayStamp(new Date(2026, 10, 30)), "20261130");
 });

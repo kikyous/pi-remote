@@ -9,6 +9,15 @@
 export const API_PREFIX = "/api/v1";
 
 /**
+ * Wire protocol revision, reported by `/ping`.
+ *
+ * The app checks it and says so plainly when the bridge is too old or too new,
+ * instead of failing in some confusing downstream way. Bump on any breaking
+ * change to the shapes below.
+ */
+export const PROTOCOL = 2;
+
+/**
  * Mirrors `ThinkingLevel` from `@earendil-works/pi-agent-core`, which is a
  * transitive dependency rather than one of ours. Structurally identical, so it
  * assigns straight into the SDK's setters.
@@ -47,18 +56,23 @@ export interface SessionSummaryDto {
 	parentSessionId?: string;
 }
 
-/** Full state for one session, including live agent state when running. */
-	export interface SessionDetailDto extends SessionSummaryDto {
+/**
+ * The settings half of a session — what the header bar and pickers show.
+ *
+ * Deliberately not "everything about a session": whether it is running, what it
+ * is doing, and how full its context is all live in [SessionStatus], which is
+ * pushed when it changes rather than polled.
+ */
+export interface SessionDetailDto {
+	id: string;
+	cwd: string;
+	/** User-defined display name (`/name`), if set. */
+	name?: string;
+	/** First user message, truncated — the fallback title. */
+	firstMessage: string;
 	/** Current model as recorded in the session, or null if never set. */
 	model: { provider: string; modelId: string } | null;
 	thinkingLevel: string;
-	/** Current position in the entry tree; null for an empty session. */
-	leafId: string | null;
-	totalEntries: number;
-	/** True when an AgentSession is loaded and streaming. */
-	running: boolean;
-	/** Token usage of the active branch, for the context bar. */
-	context?: ContextUsageDto;
 	/**
 	 * Exact levels the current model accepts. Present only while an agent is
 	 * loaded — otherwise the client falls back to the set from `/models`.
@@ -72,15 +86,142 @@ export interface ContextUsageDto {
 	percent: number | null;
 }
 
-export interface EntryPageDto {
+/* ---------------- items: the view model on the wire ---------------- */
+
+/**
+ * An opaque handle for content the server shortened.
+ *
+ * The client passes it back to `GET /full?ref=` and never parses it. Keeping it
+ * opaque is what let the old `{entryId, part, index}` triple — mirrored as an
+ * enum on both sides — collapse into one string.
+ */
+export type Ref = string;
+
+/** Text that may have been cut. `more` is present exactly when it was. */
+export interface Text {
+	s: string;
+	more?: { ref: Ref; bytes: number };
+}
+
+/** An image is never inlined: the largest one measured was 361KB of base64. */
+export interface Blob {
+	ref: Ref;
+	mime: string;
+	bytes: number;
+}
+
+export interface Usage {
+	in: number;
+	out: number;
+	cacheRead: number;
+	/** Total cost in dollars, cache reads included. */
+	cost: number;
+}
+
+/** An edit call, pre-parsed so the client can render red/green lines. */
+export interface ToolDiff {
+	path?: string;
+	hunks: Array<{ old: string; new: string }>;
+}
+
+export type NoticeKind = "text" | "compaction" | "branch" | "model" | "thinking" | "named";
+
+/**
+ * One row of the conversation.
+ *
+ * This is the whole client-facing model: a session is a list of these, and a
+ * streaming message is simply one that is not finished yet (`pending`). The
+ * client holds no second representation for live content.
+ *
+ * Tool calls are items in their own right rather than nested inside the
+ * assistant message that made them. That keeps [ItemPatch] addressable by a
+ * single id — no path into a nested array — and moves call/result pairing to the
+ * server, which has the whole tree and does not have to guess across page
+ * boundaries. Grouping them back under their assistant message is a rendering
+ * concern, decided by adjacency.
+ */
+export type Item =
+	| { kind: "user"; id: string; at: string; text: Text; images?: Blob[] }
+	| {
+			kind: "assistant";
+			id: string;
+			at: string;
+			thinking?: Text;
+			text: Text;
+			usage?: Usage;
+			error?: string;
+			/** Set while the message is still streaming. */
+			pending?: boolean;
+	  }
+	| {
+			kind: "tool";
+			id: string;
+			at: string;
+			/** The `toolCallId`, when this came from a real tool call. */
+			callId?: string;
+			name: string;
+			/** The one identifying argument — a path, a command. */
+			title?: string;
+			/** Pretty-printed arguments, one `k: v` per line. */
+			args?: Text;
+			output: Text;
+			isError?: boolean;
+			hasImage?: boolean;
+			exit?: number;
+			diff?: ToolDiff;
+			/** Set while the tool is still executing. */
+			running?: boolean;
+	  }
+	| { kind: "notice"; id: string; at: string; note: NoticeKind; arg?: string };
+
+/**
+ * A [Text] update where either half may be omitted.
+ *
+ * `s` absent means "keep the text you already have, just take the handle". That
+ * is the normal case at the end of a stream: the client received every delta, so
+ * its copy is complete and better than the shortened one on file — but it still
+ * needs the `more` handle to offer "show all" for the part that was never
+ * streamed.
+ */
+export interface TextPatch {
+	s?: string;
+	more?: { ref: Ref; bytes: number };
+}
+
+/** Fields a [Push] of kind `patch` may replace. Absent means unchanged. */
+export interface ItemPatch {
+	text?: TextPatch;
+	thinking?: TextPatch;
+	output?: TextPatch;
+	usage?: Usage;
+	error?: string;
+	pending?: boolean;
+	running?: boolean;
+	exit?: number;
+	isError?: boolean;
+	hasImage?: boolean;
+	title?: string;
+	args?: Text;
+	diff?: ToolDiff;
+	images?: Blob[];
+}
+
+/** Everything about what a session is *doing*. Pushed on every change. */
+export interface SessionStatus {
+	running: boolean;
+	/** Messages waiting behind the current turn. */
+	queued: string[];
+	compacting: boolean;
+	context?: ContextUsageDto;
+}
+
+export interface ItemPageDto {
 	/** Oldest-first within the page. */
-	entries: unknown[];
-	/** True when older entries exist before `oldestId`. */
+	items: Item[];
+	/** True when older items exist before `oldest`. */
 	hasMore: boolean;
 	/** Cursor to pass as `before` for the next older page; null when empty. */
-	oldestId: string | null;
-	/** Current leaf, so the client can tell whether the active branch moved. */
-	leafId: string | null;
+	oldest: string | null;
 }
 
 /* ---------------- git (read-only) ---------------- */
@@ -174,23 +315,6 @@ export interface PromptImageDto {
 	mimeType: string;
 }
 
-/**
- * How a client should decide a prompt is "done".
- *
- * A normal prompt runs `agent_start … agent_settled`, and `agent_settled` is
- * the signal to clear the busy indicator. An **extension command** (`/askme`,
- * any `/name` registered by an extension) does NOT: it executes inline and
- * emits only whatever messages its handler produces — verified against
- * `piremote-demo.ts`, which yields a single `custom` message and no lifecycle
- * events at all.
- *
- * So a client must not gate its spinner on `agent_settled` alone, or a slash
- * command leaves it spinning forever. Treat the HTTP 200 as "accepted", and
- * clear busy on `agent_settled` **or** on the absence of `agent_start` shortly
- * after acceptance.
- */
-export type PromptCompletionNote = never;
-
 /* ---------- WebSocket ---------- */
 
 /** Client → server. */
@@ -199,28 +323,48 @@ export type WsCommand =
 	| { op: "unsubscribe"; sessionId: string }
 	| { op: "ping" };
 
-/** Server → client. */
-export type WsMessage =
+/**
+ * Server → client.
+ *
+ * Only mutations of the item list travel here, never raw SDK events. That is the
+ * point of the whole layer: `live/translate.ts` is the one place that knows what
+ * an `AgentSessionEvent` looks like, so the client cannot be broken by the SDK
+ * growing a new event kind, and half the old wire — which turned out to be
+ * events the client never read — simply has nowhere to go.
+ */
+export type Push =
 	| {
-			op: "event";
+			/**
+			 * The full current view. Sent for a fresh subscribe, and again
+			 * whenever incremental catch-up is impossible — a replay gap, or the
+			 * agent being reloaded because someone else wrote the file. One
+			 * resync path instead of a `gap` flag plus a `session_reloaded`
+			 * event, each with its own client-side handling.
+			 */
+			t: "hello";
 			sessionId: string;
-			/** Monotonic per session; a jump means events were missed. */
 			seq: number;
-			entryId?: string;
-			event: unknown;
+			items: Item[];
+			hasMore: boolean;
+			oldest: string | null;
+			detail: SessionDetailDto;
+			status: SessionStatus;
 	  }
+	| { t: "add"; sessionId: string; seq: number; item: Item }
 	| {
-			op: "subscribed";
+			t: "patch";
 			sessionId: string;
-			/** Sequence the client is current as of, after any replay. */
 			seq: number;
-			/** True when the gap was too large to replay — refetch the page. */
-			gap: boolean;
-			running: boolean;
+			id: string;
+			/** Concatenate onto one growing field. The streaming path. */
+			append?: { f: "text" | "thinking" | "output"; s: string };
+			/** Replace named fields. Everything that is not a string append. */
+			set?: ItemPatch;
 	  }
-	| { op: "unsubscribed"; sessionId: string }
-	| { op: "pong" }
-	| { op: "error"; message: string; code?: string; sessionId?: string };
+	| { t: "status"; sessionId: string; seq: number; status: SessionStatus }
+	| { t: "unsubscribed"; sessionId: string }
+	| { t: "pong" }
+	| { t: "error"; sessionId?: string; message: string; code?: string };
 
 export interface ErrorDto {
 	error: string;

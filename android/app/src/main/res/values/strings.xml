@@ -85,6 +85,7 @@
     <string name="conn_address">Address</string>
     <string name="conn_manual">Manual connect</string>
     <string name="conn_connected">Connected · server %1$s</string>
+    <string name="conn_protocol_mismatch">Bridge %1$s speaks protocol %2$d, this app speaks %3$d. Upgrade whichever is older.</string>
     <string name="conn_failed">Connection failed: %1$s</string>
     <string name="conn_qr_invalid">Not a Pi Remote QR code (scan the one printed by the PC console at startup)</string>
     <string name="conn_camera_required">Camera permission is required to scan</string>

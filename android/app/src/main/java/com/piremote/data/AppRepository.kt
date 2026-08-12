@@ -76,50 +76,56 @@ class AppRepository(
         // sessionId, so a background session stays correct while another is on
         // screen, and a late event can never be applied to the wrong session.
         scope.launch {
-            socket.messages.collect { message ->
-                val id = message.sessionId ?: return@collect
-                trackRunState(id, message)
-                existingStore(id)?.onSocketMessage(message)
+            socket.pushes.collect { push ->
+                val id = push.sessionId ?: return@collect
+                trackRunState(id, push)
+                existingStore(id)?.apply(push)
             }
         }
     }
 
     /**
-     * Maintain the running set from the event stream itself.
+     * Maintain the running set from the push stream itself.
      *
-     * Derived here rather than from the stores so it stays correct for sessions
-     * whose screen was never opened, and so the service does not depend on the
-     * UI having a store alive.
+     * Derived here rather than from the stores so it stays correct for sessions whose
+     * screen was never opened, and so the service does not depend on the UI having a
+     * store alive.
+     *
+     * One authoritative field decides it. The old version inferred running-ness from
+     * `agent_start`/`agent_settled`, which an extension command never emits — the
+     * documented trap that left the app spinning after a slash command.
      */
-    private fun trackRunState(sessionId: String, message: com.piremote.net.WsMessage) {
-        when {
-            message.op == "subscribed" && message.running -> updateRunning { it + sessionId }
-            message.op == "event" -> when (message.event?.get("type")?.toString()?.trim('"')) {
-                "agent_start" -> updateRunning { it + sessionId }
-                "agent_settled" -> {
-                    if (sessionId in _running.value) {
-                        updateRunning { it - sessionId }
-                        val store = existingStore(sessionId)
-                        val finished = FinishedRun(
-                            sessionId = sessionId,
-                            title = store?.state?.value?.detail?.name
-                                ?: store?.state?.value?.detail?.firstMessage?.take(40)
-                                ?: appContext.getString(R.string.session),
-                            preview = store?.lastAssistantText().orEmpty(),
-                        )
-                        _finished.tryEmit(finished)
-                        // Posted here, not from Compose, for the same reason the
-                        // service is: the app is usually backgrounded by now.
-                        AgentForegroundService.notifyFinished(
-                            appContext,
-                            finished.sessionId,
-                            appContext.getString(R.string.session_finished, finished.title),
-                            finished.preview,
-                        )
-                    }
-                }
-            }
+    private fun trackRunState(sessionId: String, push: com.piremote.net.Push) {
+        val running = when (push) {
+            is com.piremote.net.Push.Hello -> push.status.running
+            is com.piremote.net.Push.Status -> push.status.running
+            else -> return
         }
+
+        if (running) {
+            updateRunning { it + sessionId }
+            return
+        }
+        if (sessionId !in _running.value) return
+
+        updateRunning { it - sessionId }
+        val store = existingStore(sessionId)
+        val finished = FinishedRun(
+            sessionId = sessionId,
+            title = store?.state?.value?.detail?.name
+                ?: store?.state?.value?.detail?.firstMessage?.take(40)
+                ?: appContext.getString(R.string.session),
+            preview = store?.lastAssistantText().orEmpty(),
+        )
+        _finished.tryEmit(finished)
+        // Posted here, not from Compose, for the same reason the service is: the app
+        // is usually backgrounded by now.
+        AgentForegroundService.notifyFinished(
+            appContext,
+            finished.sessionId,
+            appContext.getString(R.string.session_finished, finished.title),
+            finished.preview,
+        )
     }
 
     /**
@@ -153,7 +159,7 @@ class AppRepository(
             stores[sessionId] = existing
             return existing
         }
-        val created = SessionStore(sessionId, client, scope, appContext)
+        val created = SessionStore(sessionId, client, scope, appContext, socket::resync)
         stores[sessionId] = created
         while (stores.size > MAX_CACHED_SESSIONS) {
             val oldest = stores.keys.first()

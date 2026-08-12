@@ -12,8 +12,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { HttpError } from "./http.ts";
-import type { ThinkingLevel } from "./protocol.ts";
-import { slimEvent } from "./slim.ts";
+import { type Coalescer, createCoalescer } from "./live/coalesce.ts";
+import { createTranslator, type Mutation, type Translator } from "./live/translate.ts";
+import type { Item, Push, SessionStatus, ThinkingLevel } from "./protocol.ts";
 import type { EntryTree } from "./sessions/model.ts";
 import { registerSession, requireLocated } from "./store.ts";
 
@@ -29,17 +30,13 @@ import { registerSession, requireLocated } from "./store.ts";
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
-/** Events retained per session so a reconnecting client can catch up. */
-const REPLAY_BUFFER_SIZE = 200;
-
-export interface BufferedEvent {
+/** A mutation with its sequence assigned, as it went out. */
+export interface BufferedPush {
 	seq: number;
-	/** Entry id when the event appended one — the cursor a client resumes from. */
-	entryId?: string;
-	event: unknown;
+	push: Push;
 }
 
-export type EventListener = (buffered: BufferedEvent) => void;
+export type EventListener = (buffered: BufferedPush) => void;
 
 interface LiveAgent {
 	session: AgentSession;
@@ -47,8 +44,22 @@ interface LiveAgent {
 	path: string;
 	unsubscribe: () => void;
 	listeners: Set<EventListener>;
-	buffer: BufferedEvent[];
 	seq: number;
+	/**
+	 * itemId → the sequence at which it last changed.
+	 *
+	 * This is what a reconnecting client is caught up from, and it replaced a ring
+	 * buffer of the last 200 pushes. That buffer could not do the job: a 2000-word
+	 * answer streams **1042 pushes**, so any reconnect during a long turn fell off
+	 * the end and got a full snapshot instead. One number per item covers a whole
+	 * session for less memory than 200 retained payloads, and resending an item
+	 * whole is exact by construction — no delta arithmetic to get subtly wrong.
+	 */
+	touched: Map<string, number>;
+	/** SDK events → item mutations. The only consumer of AgentSessionEvent. */
+	translator: Translator;
+	/** Batches streaming appends into one frame per flush interval. */
+	coalescer: Coalescer;
 	/** Last time anything touched this session; drives idle disposal. */
 	touchedAt: number;
 	/** Serializes prompt admission. See `withPromptLock`. */
@@ -135,12 +146,25 @@ export async function acquire(sessionId: string, forWrite = false): Promise<Live
 }
 
 /**
+ * Called when a session was replaced under its subscribers, so they can be sent
+ * a fresh snapshot. Set by `ws.ts`, which is where `hello` is built — the pool
+ * has no business reaching into the read path to assemble one.
+ */
+let onResync: (sessionId: string) => void = () => {};
+
+export function setResyncHandler(handler: (sessionId: string) => void): void {
+	onResync = handler;
+}
+
+/**
  * Replace a stale session while keeping its subscribers attached.
  *
  * Tearing the agent down would otherwise drop every WebSocket listener with it,
  * and a client that was watching a run would simply stop receiving events with
- * no indication anything happened. Listeners move across to the new agent and
- * are told the sequence restarted so they can refetch.
+ * no indication anything happened. Listeners move across to the new agent, and
+ * because the new agent's sequence restarts at 0 every client's cursor is now
+ * meaningless — so they are handed a full snapshot rather than left to fall
+ * silently behind.
  */
 async function reload(old: LiveAgent): Promise<LiveAgent> {
 	const carried = [...old.listeners];
@@ -150,19 +174,47 @@ async function reload(old: LiveAgent): Promise<LiveAgent> {
 
 	const fresh = await create(old.sessionId);
 	for (const listener of carried) fresh.listeners.add(listener);
-
-	// The new agent starts at seq 0, so every client's cursor is meaningless.
-	// Tell them explicitly rather than letting them silently fall behind.
-	const notice: BufferedEvent = { seq: ++fresh.seq, event: { type: "session_reloaded" } };
-	fresh.buffer.push(notice);
-	for (const listener of carried) {
-		try {
-			listener(notice);
-		} catch (err) {
-			console.error(`[${old.sessionId}] listener failed on reload:`, err);
-		}
-	}
+	onResync(old.sessionId);
 	return fresh;
+}
+
+/** Wire one loaded session: SDK events → translator → coalescer → subscribers. */
+function attach(session: AgentSession, sessionId: string, path: string): LiveAgent {
+	// The coalescer resolves the agent by id at flush time rather than closing
+	// over it, so the pipeline can be built before the agent exists. `destroy()`
+	// stops the coalescer, so a torn-down session can never flush into whatever
+	// replaced it.
+	const coalescer = createCoalescer((mutation) => {
+		const current = agents.get(sessionId);
+		if (current) publish(current, mutation);
+	});
+	const translator = createTranslator(
+		(mutation) => coalescer.push(mutation),
+		() => {
+			const context = session.getContextUsage();
+			return { running: session.isStreaming, ...(context ? { context } : {}) };
+		},
+	);
+
+	const live: LiveAgent = {
+		session,
+		sessionId,
+		path,
+		unsubscribe: () => {},
+		listeners: new Set(),
+		seq: 0,
+		touched: new Map(),
+		translator,
+		coalescer,
+		touchedAt: Date.now(),
+		promptChain: Promise.resolve(),
+		...readStat(path),
+	};
+	live.unsubscribe = session.subscribe((event) => consume(live, event));
+
+	agents.set(sessionId, live);
+	startSweeper();
+	return live;
 }
 
 async function create(sessionId: string): Promise<LiveAgent> {
@@ -180,26 +232,11 @@ async function create(sessionId: string): Promise<LiveAgent> {
 		modelRuntime: await getModelRuntime(),
 	});
 
-	const live: LiveAgent = {
-		session,
-		sessionId,
-		path: info.path,
-		unsubscribe: () => {},
-		listeners: new Set(),
-		buffer: [],
-		seq: 0,
-		touchedAt: Date.now(),
-		promptChain: Promise.resolve(),
-		...readStat(info.path),
-	};
-
-	live.unsubscribe = session.subscribe((event) => publish(live, event));
-	agents.set(sessionId, live);
+	const live = attach(session, sessionId, info.path);
 	// Starting an AgentSession appends model/thinking entries of its own, and
 	// that write may not have landed by the time the constructor returns.
 	// Re-stat on the next tick so our own startup is not read as an external edit.
 	setImmediate(() => Object.assign(live, readStat(info.path)));
-	startSweeper();
 	return live;
 }
 
@@ -230,20 +267,7 @@ export async function createSession(
 		throw new HttpError(500, "New session was not persisted", "not_persisted");
 	}
 
-	const live: LiveAgent = {
-		session,
-		sessionId,
-		path,
-		unsubscribe: () => {},
-		listeners: new Set(),
-		buffer: [],
-		seq: 0,
-		touchedAt: Date.now(),
-		promptChain: Promise.resolve(),
-		...readStat(path),
-	};
-	live.unsubscribe = session.subscribe((event) => publish(live, event));
-	agents.set(sessionId, live);
+	attach(session, sessionId, path);
 
 	// The file does not exist until the first entry is appended, so publish a
 	// placeholder that lookups and listings can see in the meantime.
@@ -257,7 +281,6 @@ export async function createSession(
 		messageCount: 0,
 		firstMessage: "",
 	});
-	startSweeper();
 	return sessionId;
 }
 
@@ -309,14 +332,17 @@ export function withPromptLock<T>(live: LiveAgent, fn: () => Promise<T>): Promis
 	return result;
 }
 
-function publish(live: LiveAgent, event: AgentSessionEvent): void {
+/**
+ * One SDK event in; zero or more item mutations out, batched.
+ *
+ * Nothing invalidates the session caches from here, on purpose. They key on the
+ * file's `(mtime, size)`, which an append moves, so the next reader notices by
+ * itself — and re-reads only this one file. The previous code dropped the whole
+ * snapshot on every appended entry, which put a 476ms rescan of all 135 sessions
+ * behind the next request. See `sessions/scan.ts`.
+ */
+function consume(live: LiveAgent, event: AgentSessionEvent): void {
 	live.touchedAt = Date.now();
-
-	// Nothing invalidates the session caches from here, on purpose. They key on
-	// the file's `(mtime, size)`, which an append moves, so the next reader
-	// notices by itself — and re-reads only this one file. The previous code
-	// dropped the whole snapshot on every appended entry, which put a 476ms
-	// rescan of all 135 sessions behind the next request. See `sessions/scan.ts`.
 
 	// Our own appends move the file; refresh the fingerprint so they are not
 	// mistaken for an external writer. The stat is deferred to the next tick
@@ -329,27 +355,31 @@ function publish(live: LiveAgent, event: AgentSessionEvent): void {
 		// The SDK appends the message to the session manager right after
 		// emitting message_end, but the only entry_appended events it emits are
 		// for extension appendEntry() — a regular turn never produces one.
-		// Without the authoritative entry the client has nothing to render once
-		// the streaming bubble clears, so a conversation built from live events
-		// stays empty until a manual refetch. Forward it on the microtask that
-		// follows the append, when the entry exists to look up.
+		// Without the authoritative entry there is nothing to reconcile the
+		// streamed item against, so a conversation built from live pushes would
+		// never get its usage, refs or truncation markers. Feed it back in on the
+		// microtask that follows the append, when the entry exists to look up.
 		const message = event.message;
 		if (isPersistedMessage(message)) {
 			queueMicrotask(() => {
 				const entry = findEntryForMessage(live, message);
-				if (entry) publish(live, { type: "entry_appended", entry });
+				if (entry) consume(live, { type: "entry_appended", entry });
 			});
 		}
 	}
 
-	const buffered: BufferedEvent = {
+	live.translator.handle(event);
+}
+
+/** Assign a sequence, note which item moved, fan out. */
+function publish(live: LiveAgent, mutation: Mutation): void {
+	const buffered: BufferedPush = {
 		seq: ++live.seq,
-		event: slimEvent(event),
-		...(event.type === "entry_appended" ? { entryId: event.entry.id } : {}),
+		push: { ...mutation, sessionId: live.sessionId, seq: live.seq } as Push,
 	};
 
-	live.buffer.push(buffered);
-	if (live.buffer.length > REPLAY_BUFFER_SIZE) live.buffer.shift();
+	if (mutation.t === "add") live.touched.set(mutation.item.id, live.seq);
+	else if (mutation.t === "patch") live.touched.set(mutation.id, live.seq);
 
 	for (const listener of live.listeners) {
 		try {
@@ -361,45 +391,61 @@ function publish(live: LiveAgent, event: AgentSessionEvent): void {
 }
 
 /**
- * Work out what a reconnecting client missed.
+ * Flush buffered appends, then report the position and the in-flight item.
  *
- * Split out from `subscribe` so it can be tested without a live agent: the
- * cases that matter (an evicted gap, an already-current client, a partial
- * catch-up) are hard to provoke reliably against a real model.
+ * Callers building a snapshot must go through here: a queued append delivered
+ * *after* a snapshot that already contains its text would show up twice on the
+ * client. Flushing first makes the returned `seq` the true high-water mark.
  */
-export function computeReplay(
-	buffer: readonly BufferedEvent[],
-	currentSeq: number,
-	sinceSeq: number | undefined,
-): { replay: BufferedEvent[]; gap: boolean } {
-	// A fresh subscriber wants live events only.
-	if (sinceSeq === undefined) return { replay: [], gap: false };
-	// Already current — or ahead, which means the agent was reloaded and its
-	// sequence restarted; either way there is nothing to replay.
-	if (sinceSeq >= currentSeq) return { replay: [], gap: false };
-
-	const oldest = buffer[0]?.seq;
-	if (oldest === undefined) return { replay: [], gap: true };
-	// The events between `sinceSeq` and the buffer start have been evicted.
-	if (sinceSeq < oldest - 1) return { replay: [], gap: true };
-
-	return { replay: buffer.filter((b) => b.seq > sinceSeq), gap: false };
+export function snapshotPoint(live: LiveAgent): { seq: number; tail: Item | undefined; status: SessionStatus } {
+	live.coalescer.flush();
+	live.translator.syncStatus();
+	live.coalescer.flush();
+	return { seq: live.seq, tail: live.translator.tail(), status: live.translator.status() };
 }
 
 /**
- * Attach a listener, replaying anything it missed since `sinceSeq`.
+ * What a client resuming from `sinceSeq` needs, expressed as item ids.
  *
- * Returns the events to send before live ones, plus whether the gap was too
- * large to cover — in which case the client should refetch the page instead.
+ * `undefined` means "no incremental catch-up is possible, send a snapshot":
+ *   - no cursor at all — a fresh subscribe;
+ *   - a cursor *ahead* of us, which means the agent was idle-disposed and
+ *     rebuilt, so the number means nothing and anything an external pi TUI did
+ *     while it was gone is invisible.
+ *
+ * Otherwise: every item that changed after `sinceSeq`. The caller resends each
+ * one whole, which is exact whatever happened to it — several appends, a
+ * `set`, or both. There is deliberately no attempt to replay the individual
+ * mutations: that is what the ring buffer did, and reconstructing "the last
+ * 1042 pushes" is both bigger and easier to get wrong than "these three items
+ * now look like this".
+ *
+ * Exported to be tested without a live agent — the interesting cases (a long
+ * turn, a restarted agent, an already-current client) are hard to provoke
+ * against a real model.
  */
+export function catchUpIds(
+	touched: ReadonlyMap<string, number>,
+	currentSeq: number,
+	sinceSeq: number | undefined,
+): Set<string> | undefined {
+	if (sinceSeq === undefined) return undefined;
+	if (sinceSeq > currentSeq) return undefined;
+
+	const stale = new Set<string>();
+	for (const [id, seq] of touched) if (seq > sinceSeq) stale.add(id);
+	return stale;
+}
+
+/** Attach a listener and report what it has to be caught up on. */
 export function subscribe(
 	live: LiveAgent,
 	listener: EventListener,
 	sinceSeq: number | undefined,
-): { replay: BufferedEvent[]; gap: boolean } {
+): Set<string> | undefined {
 	live.listeners.add(listener);
 	live.touchedAt = Date.now();
-	return computeReplay(live.buffer, live.seq, sinceSeq);
+	return catchUpIds(live.touched, live.seq, sinceSeq);
 }
 
 export function unsubscribe(live: LiveAgent, listener: EventListener): void {
@@ -412,6 +458,7 @@ export async function destroy(sessionId: string): Promise<void> {
 	if (!live) return;
 	agents.delete(sessionId);
 	live.listeners.clear();
+	live.coalescer.stop();
 	try {
 		live.unsubscribe();
 		live.session.dispose();

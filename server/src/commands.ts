@@ -9,10 +9,11 @@ import {
 	type ModelsResponseDto,
 	type PromptImageDto,
 	type PromptResultDto,
+	type SessionStatus,
 	THINKING_LEVELS,
 	type ThinkingLevel,
 } from "./protocol.ts";
-import { estimateSessionTokens } from "./store.ts";
+import { type LiveSessionState, estimateSessionTokens } from "./store.ts";
 
 /** Shown for a model whose session is not loaded, so exact support is unknown. */
 const STANDARD_LEVELS = ["off", "minimal", "low", "medium", "high"];
@@ -56,6 +57,25 @@ export async function sessionContextUsage(
 			? Math.round((tokens / contextWindow) * 1000) / 10
 			: null;
 	return { tokens, contextWindow, percent };
+}
+
+/**
+ * Status for a session with no agent loaded.
+ *
+ * Nothing is running by definition, but the context bar still wants a number, so
+ * the branch is replayed through the SDK's estimator. A loaded session reports its
+ * status from the live agent instead — see `snapshotPoint`.
+ */
+export async function idleStatus(
+	sessionId: string,
+	model: { provider: string; modelId: string } | null,
+): Promise<SessionStatus> {
+	return {
+		running: false,
+		queued: [],
+		compacting: false,
+		context: await sessionContextUsage(sessionId, model),
+	};
 }
 
 export async function listModels(): Promise<ModelsResponseDto> {
@@ -427,16 +447,19 @@ export async function updateSession(sessionId: string, patch: SessionPatch): Pro
  * the truth. Returns undefined when no agent is loaded, and the file-derived
  * values stand.
  */
-export function loadedSessionState(sessionId: string):
-	| { model: { provider: string; modelId: string } | null; thinkingLevel: string; availableThinkingLevels: string[] }
-	| undefined {
+export function loadedSessionState(sessionId: string): LiveSessionState | undefined {
 	const live = getLoaded(sessionId);
 	if (!live) return undefined;
 	const model = live.session.model;
+	// The name comes from the agent too: `PATCH /sessions/:id` answers with the
+	// detail, and reading it back off the file could still miss a rename whose
+	// entry has not flushed.
+	const name = live.session.sessionManager.getSessionName();
 	return {
 		model: model ? { provider: model.provider, modelId: model.id } : null,
 		thinkingLevel: live.session.thinkingLevel,
 		availableThinkingLevels: live.session.getAvailableThinkingLevels(),
+		...(name ? { name } : {}),
 	};
 }
 

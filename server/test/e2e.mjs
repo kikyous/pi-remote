@@ -30,30 +30,60 @@ console.log("1. 新建会话 …");
 const { id } = await api("/sessions", { method: "POST", body: JSON.stringify({ cwd: CWD }) });
 console.log("   sessionId:", id);
 
-console.log("2. 会话详情 …");
-const detail = await api(`/sessions/${id}`);
-console.log("   model:", detail.model, "thinking:", detail.thinkingLevel, "running:", detail.running);
-console.log("   availableThinkingLevels:", detail.availableThinkingLevels);
+console.log("2. 协议版本 …");
+const ping = await api("/ping");
+if (ping.protocol !== 2) { console.error(`   失败: protocol=${ping.protocol}, 期望 2`); process.exit(1); }
+console.log(`   version=${ping.version} protocol=${ping.protocol}`);
 
-console.log("3. WS 订阅 …");
+console.log("3. WS 订阅（hello 带首屏 + detail + status，无需 GET detail）…");
 const ws = new WebSocket(`ws://127.0.0.1:30150/ws?token=${encodeURIComponent(TOKEN)}`);
-const seen = [];
+const frames = [];
+let bytes = 0;
 let lastSeq = 0;
+let hello;
 let settled;
 const settledPromise = new Promise((r) => (settled = r));
 
+// The item list, folded from the push stream exactly as the client does it.
+const items = [];
+const applyText = (target, key, patch) => {
+  const current = target[key];
+  target[key] = { s: patch.s ?? current?.s ?? "", ...(patch.more ?? current?.more ? { more: patch.more ?? current?.more } : {}) };
+};
+
 ws.on("open", () => ws.send(JSON.stringify({ op: "subscribe", sessionId: id })));
 ws.on("message", (raw) => {
-  const msg = JSON.parse(raw.toString());
-  if (msg.op === "subscribed") {
-    console.log(`   已订阅 seq=${msg.seq} gap=${msg.gap} running=${msg.running}`);
+  const text = raw.toString();
+  const msg = JSON.parse(text);
+  if (msg.t === "hello") {
+    hello = msg;
+    items.length = 0;
+    items.push(...msg.items);
+    lastSeq = msg.seq;
+    console.log(`   hello seq=${msg.seq} items=${msg.items.length} running=${msg.status.running} model=${msg.detail.model?.modelId}`);
+    console.log(`   availableThinkingLevels: ${JSON.stringify(msg.detail.availableThinkingLevels)}`);
     return;
   }
-  if (msg.op !== "event") return;
+  if (msg.t === "pong" || msg.t === "unsubscribed") return;
+  if (msg.t === "error") { console.error("   服务端错误:", msg.message); process.exit(1); }
+
+  frames.push(msg.t);
+  bytes += Buffer.byteLength(text);
   if (msg.seq !== lastSeq + 1) console.log(`   !! seq 跳变 ${lastSeq} → ${msg.seq}`);
   lastSeq = msg.seq;
-  seen.push(msg.event.type);
-  if (msg.event.type === "agent_settled") settled();
+
+  if (msg.t === "add") items.push(msg.item);
+  else if (msg.t === "patch") {
+    const target = items.find((i) => i.id === msg.id);
+    if (!target) { console.error(`   失败: patch 指向未知 item ${msg.id}`); process.exit(1); }
+    if (msg.append) applyText(target, msg.append.f, { s: (target[msg.append.f]?.s ?? "") + msg.append.s });
+    for (const [k, v] of Object.entries(msg.set ?? {})) {
+      if ((k === "text" || k === "thinking" || k === "output") && v) applyText(target, k, v);
+      else target[k] = v;
+    }
+  } else if (msg.t === "status" && msg.status.running === false && frames.length > 2) {
+    settled();
+  }
 });
 ws.on("error", (e) => { console.error("WS 错误:", e.message); process.exit(1); });
 
@@ -64,35 +94,48 @@ const t0 = Date.now();
 const result = await api(`/sessions/${id}/prompt`, { method: "POST", body: JSON.stringify({ message: prompt }) });
 console.log(`   HTTP 立即返回 (${Date.now() - t0}ms):`, JSON.stringify(result));
 
-console.log("5. 等待 agent_settled …");
+console.log("5. 等待 status.running=false …");
 const timeout = setTimeout(() => { console.error("   超时 60s"); process.exit(1); }, 60_000);
 await settledPromise;
 clearTimeout(timeout);
 
-const counts = seen.reduce((a, t) => ((a[t] = (a[t] ?? 0) + 1), a), {});
-console.log(`   收到 ${seen.length} 个事件, 最终 seq=${lastSeq}`);
-console.log("   事件统计:", JSON.stringify(counts));
+const counts = frames.reduce((a, t) => ((a[t] = (a[t] ?? 0) + 1), a), {});
+console.log(`   收到 ${frames.length} 帧 / ${bytes} 字节, 最终 seq=${lastSeq}`);
+console.log("   帧统计:", JSON.stringify(counts));
 
-// Every persisted message must also arrive as entry_appended — the client
-// renders conversations from those, not from message_end. If this synthesis is
-// lost, a fresh chat stays empty until a manual refresh and no other assertion
-// would catch it.
-const messageEnds = counts.message_end ?? 0;
-const entries = counts.entry_appended ?? 0;
-if (entries !== messageEnds) {
-  console.error(`   失败: message_end=${messageEnds} 但 entry_appended=${entries}`);
+// The whole point of v2: no SDK event kind reaches the client.
+if (counts.event) { console.error("   失败: 仍在转发原始 SDK 事件"); process.exit(1); }
+
+// A pending item that never settles means the client would spin forever.
+const stillPending = items.filter((i) => i.pending);
+if (stillPending.length > 0) {
+  console.error(`   失败: ${stillPending.length} 个 item 仍是 pending`);
   process.exit(1);
 }
-console.log(`   entry_appended=${entries} 与 message_end=${messageEnds} 匹配 ✓`);
+console.log(`   ${items.length} 个 item 全部落定 ✓`);
 
-console.log("6. 校验落盘 …");
-const page = await api(`/sessions/${id}/entries`);
-const roles = page.entries.filter((e) => e.type === "message").map((e) => e.message.role);
-console.log("   entries:", page.entries.length, "roles:", roles.join(" → "));
+console.log("6. 校验落盘（/items 与推流收敛到同一结果）…");
+const page = await api(`/sessions/${id}/items`);
+console.log("   items:", page.items.length, "kinds:", page.items.map((i) => i.kind).join(" → "));
 
-const assistant = page.entries.filter((e) => e.type === "message" && e.message.role === "assistant").at(-1);
-const text = assistant?.message.content.filter((c) => c.type === "text").map((c) => c.text).join("");
-console.log("   助手回复:", JSON.stringify(text));
+const answer = page.items.filter((i) => i.kind === "assistant").at(-1);
+console.log("   助手回复:", JSON.stringify(answer?.text.s));
+
+// The live stream and the stored page must describe the same conversation.
+const liveKinds = items.map((i) => i.kind).join(",");
+const storedKinds = page.items.map((i) => i.kind).join(",");
+if (liveKinds !== storedKinds) {
+  console.error(`   失败: 推流得到 [${liveKinds}]，落盘是 [${storedKinds}]`);
+  process.exit(1);
+}
+const liveAnswer = items.filter((i) => i.kind === "assistant").at(-1);
+if (liveAnswer?.text.s !== answer?.text.s) {
+  console.error(`   失败: 推流文本与落盘文本不一致`);
+  console.error(`     推流: ${JSON.stringify(liveAnswer?.text.s)}`);
+  console.error(`     落盘: ${JSON.stringify(answer?.text.s)}`);
+  process.exit(1);
+}
+console.log("   推流与落盘一致 ✓");
 
 console.log("7. 中止一个空闲会话（应 aborted=false 而非报错）…");
 console.log("  ", JSON.stringify(await api(`/sessions/${id}/abort`, { method: "POST" })));

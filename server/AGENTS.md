@@ -12,11 +12,14 @@ Token 在 `~/.pi/remote/token`，首次启动自动生成并打印。启动横�
 ## 架构
 
 ```
-索引（找会话）        sessions/scan.ts    readdir，不解析任何文件
-浏览（只读）          sessions/model.ts   解析后的树，按 (mtime,size) 缓存
-                     store.ts            投影到 wire 类型
+索引（找会话）        sessions/scan.ts     readdir，不解析任何文件
+浏览（只读）          sessions/model.ts    解析后的树，按 (mtime,size) 缓存
+                     items.ts             entry → Item[]（唯一定义 item 最终形态的地方）
+                     store.ts             投影到 wire 类型
 执行（写入）          agent-pool.ts → createAgentSession()      仅发消息时创建
-事件流                session.subscribe() → ws.ts 扇出给所有订阅者
+事件流                live/translate.ts    SDK 事件 → item 变更（唯一认识 AgentSessionEvent 的文件）
+                     live/coalesce.ts     80ms / 4KB 攒批
+                     ws.ts                扇出给所有订阅者
 ```
 
 **浏览走文件、执行才起 agent。** 会话列表和历史只读 JSONL，切换会话不产生任何 agent 开销——
@@ -26,8 +29,8 @@ Token 在 `~/.pi/remote/token`，首次启动自动生成并打印。启动横�
 session id（`<时间戳>_<id>.jsonl`，本机 135 个文件全部吻合），一次 `readdir` 2.6ms 就能建好，
 不用打开任何文件。而 `SessionManager.open()` 会**立刻全量解析**——最大的会话 7.7MB / 1460 条
 entry，一次 52ms。早先两者混在一起：`findSession()` 为了拿一个路径去跑
-`SessionManager.listAll()`，那是 **476ms**（135 个会话全部解析一遍），而它挂在每个
-`/entries`、每个 detail、冷 agent 的第一条 prompt 前面。
+`SessionManager.listAll()`，那是 **476ms**（135 个会话全部解析一遍），而它挂在每个翻页请求、每个
+detail、冷 agent 的第一条 prompt 前面。
 
 **两层缓存都以文件的 `(mtime, size)` 为键，没有 TTL。** 会话文件是 append-only 的，所以这个键
 命中就等于「解析结果可证明是最新的」，任何写入者（我们自己或另一个 pi TUI）都会让它失效。这比
@@ -39,12 +42,46 @@ entry，一次 52ms。早先两者混在一起：`findSession()` 为了拿一个
 |---|---|---|
 | `id → path` | 476ms | 0.002ms（`locate()` 135 次共 0.3ms） |
 | 会话列表（无变动） | 476ms | 2.1ms |
-| 开一个会话（detail + 首页） | 3 次全量解析 | 1 次（detail 冷 123ms → 热 0.1ms，`/entries` 1.0ms） |
-| 往前翻 20 页 | 20 次全量解析 ≈ 1040ms | 4.2ms |
+| 开一个会话（detail + 首页） | 3 次全量解析 | 1 次（冷 123ms → 热 0.1ms；首页与 detail 共用） |
+| 往前翻 20 页 | 20 次全量解析 ≈ 1040ms | 4.2ms（item 列表按文件版本记忆化） |
 
 新写的 summary 读取器逐字段对齐了 SDK 内部的 `buildSessionInfo`（它没有导出），135 个会话
 **零差异**——改动这块时用同样的对比方式验证，不要凭眼看。唯一故意的差别是不构造
 `allMessagesText`：那是给本地搜索用的全文拼接，wire 上早就丢掉了，构造它白白翻倍内存和读取成本。
+
+## 线上传的是 item，不是 SDK 事件
+
+**`live/translate.ts` 是全仓库唯一认识 `AgentSessionEvent` 的文件。** 这条边界是整个协议 v2 的
+支点。之前 WS 上原封不动转发 SDK 事件，代价是：
+
+- **51% 的字节 / 31% 的帧客户端从不读**（`toolcall_*`、`text_end`、`thinking_end`、
+  `turn_start/end`、`agent_end` 在 Kotlin 里引用数为 0；`message_start/end` 的整个 `message`
+  载荷也没人读）。
+- **同一段 assistant 文本过线三次**：deltas → `message_end.message` → 合成的 `entry_appended`。
+- 客户端必须懂 `assistantMessageEvent.type`、`partialResult.content[].text`、
+  `message.usage.cost.total`，SDK 加一种事件就可能弄坏它。
+
+现在线上只有 `hello`/`add`/`patch`/`status` 四种推送，实测同一个回合 **21730 字节 / 139 帧 →
+1502 字节 / 12 帧**（`src/live/translate.test.ts` 用抓下来的真实事件流当回归基准，断言帧数与字节上界）。
+
+**item 的最终形态只在 `items.ts` 定义一处。** 流式路径把 delta 攒起来，消息落盘时把 entry 过一遍
+同一个 `itemsFromEntries()` 再发 `set`——两条路径因此不可能漂移。而且落盘文本与流式文本一致时
+**不重发**（`needsResend`），所以正常路径下每段内容只过线一次；只有 retry / 改写这类真漂移才补发。
+
+**工具调用是独立的顶层 item**，不嵌在 assistant 消息里。这样 `patch` 永远只寻址一个 id，不需要
+路径进数组；调用↔结果的配对也留在服务端（它有整棵树）。客户端按相邻关系把它们画到一起。
+
+`tool_execution_update` 的 `partialResult` 是**累积**的（每次重发全部输出）。translate 只发增量，
+否则长命令是 O(n²) 的流量。
+
+**帧数由回合时长决定，不由字数**：≈ 时长 / `FLUSH_MS`。实测一篇 2000 字回答流式 170 秒 = 1042 帧
+/ 198KB，平均每帧 191 字节里只有约 22 个字符是内容——信封（`sessionId` 36 字符 + `seq` + `id` +
+字段名）占了大头。**这个比例难看但绝对量无所谓**（1.2 KB/s，LAN 上什么都不是），而想改善它只能提高
+攒批阈值，那会直接牺牲流式的顺滑感。所以 `FLUSH_MS = 80` 保持不动——真要动，先想清楚是在拿可感知
+的延迟换一个不影响任何东西的带宽数字。
+
+（对比：v1 同一篇回答约 970KB——每个 token 一帧，外加 `message_end`/`turn_end`/`agent_end` 各带
+一份 22K 字符的全文。）
 
 ## 实测数据（决定了瘦身规则）
 
@@ -59,11 +96,12 @@ entry，一次 52ms。早先两者混在一起：`findSession()` 为了拿一个
 | 25KB | assistant `toolCall.arguments`（write 的文件内容在参数里） |
 | 12KB | assistant `thinking` 块 |
 
-`slim.ts` 处理全部五种。最大会话经分页后：20 页，最大单页 156KB。全会话共 343 处被瘦身
-（thinking 230、arguments 108、text 4、image 1）。
+`items.ts` 处理全部五种：超长文本截断成 `{s, more:{ref, bytes}}`，图片一律只留占位。**句柄
+（ref）对客户端不透明**，回传给 `GET /sessions/:id/full?ref=` 取原文——这让原先
+`{entryId, part, index}` 三元组和两侧镜像的 `FullPart` 枚举收成了一个字符串。
 
 **注意 `toolCall.arguments`**：按字段逐个截断，不整体丢弃——`write` 把整个文件塞进 `content`，
-但 UI 需要旁边的 `file_path` 才能渲染出「▸ write src/foo.ts」。
+但 UI 需要旁边的 `file_path` 才能渲染出「▸ write src/foo.ts」（`headline()`）。
 
 ## 陷阱
 
@@ -81,13 +119,18 @@ entry，一次 52ms。早先两者混在一起：`findSession()` 为了拿一个
 
 临界区只覆盖「准入」，不覆盖 run 本身，所以排队的 followUp 仍然立即返回。
 
-### 扩展命令不产生 agent_settled
+### 扩展命令不产生 agent_settled —— 所以忙碌状态由服务端说，不由客户端推断
 
 普通 prompt 走 `agent_start … agent_settled`。**扩展命令（`/askme` 之类）不走**——它就地执行，
-只发出 handler 产生的消息。用 `piremote-demo.ts` 实测：只有一条 `custom` 消息，没有任何生命
-周期事件。
+只发出 handler 产生的消息。实测：只有一条 `custom` 消息，`content` 还是空的（`hasUI === false`
+时它走非交互路径），且**整个会话文件都不存在**——那条消息根本没落盘。
 
-所以客户端的 loading 状态**不能只依赖 `agent_settled`**，否则发个斜杠命令就永远转圈。
+旧设计把生命周期事件转给客户端，于是客户端要靠启发式（「不能只等 `agent_settled`」）才不会永远
+转圈。现在 `status.running` 由服务端从 `session.isStreaming` 的变化推出：扩展命令从不把它置真，
+也就没有需要清的转圈状态。`e2e2.mjs` 的 A 项断言的就是「从未被标记为运行中」。
+
+扩展产出的 `custom` 消息由 translate 直接从事件产出一条 notice（铸造 id，不落盘、resync 后消失
+——诚实，因为磁盘上没有可恢复的东西）。旧 wire 上这条内容根本到不了聊天里。
 
 ### 不要绑定 uiContext
 
@@ -113,8 +156,11 @@ entry，一次 52ms。早先两者混在一起：`findSession()` 为了拿一个
 
 **3. 重载必须搬走订阅者。** `destroy()` 会 `listeners.clear()`。早期版本重载时直接 destroy + create，
 结果是**客户端 WebSocket 还连着，但再也收不到任何事件**——UI 一直转圈却毫无报错，极难排查。现在
-`reload()` 把 listener 集合搬到新 agent 上，并推一条 `session_reloaded` 让客户端重新拉取（新 agent
-的 seq 从 0 开始，客户端的游标已失效）。
+`reload()` 把 listener 集合搬到新 agent 上，然后调 `onResync()`（由 `ws.ts` 注册）给每个订阅者发
+一条新的 `hello`——新 agent 的 seq 从 0 开始，客户端的游标已经没有意义。
+
+这里的分工是刻意的：pool 不知道怎么拼 `hello`（那要读 detail 和首屏），`ws.ts` 知道。所以 pool 只
+喊一声，不去 import 读路径。
 
 ### 别在 append 时去清会话缓存
 
@@ -134,7 +180,7 @@ entry，一次 52ms。早先两者混在一起：`findSession()` 为了拿一个
 
 理由不是理论上的：内存树只有在没人绕过我们写文件时才是权威。外部 pi TUI 追加的 entry 只在文件
 里，agent 要等下一次**写路径** `acquire(forWrite=true)` 才重载——中间这段时间把内存树交给读者，
-`GET /entries` 就看不到外部那条消息，而文件本身明明有。`e2e2.mjs` 的 E 项就是抓这个的，第一版
+`GET /items` 就看不到外部那条消息，而文件本身明明有。`e2e2.mjs` 的 E 项就是抓这个的，第一版
 实现直接被它挡下来了。
 
 代价是每次读多一次 `statSync`（约 0.04ms）。
@@ -144,6 +190,43 @@ entry，一次 52ms。早先两者混在一起：`findSession()` 为了拿一个
 `SessionManager.create()` 延迟到第一条 entry 才落盘，期间任何目录扫描都看不到它。
 `sessions/scan.ts` 的 `pending` 表登记这类会话，让 `locate()` 和 `summaries()` 都能看到，避免
 客户端拿到 id 却立刻 404。真实文件被扫到后自动清除，中间不会出现重复的一行。
+
+### hello 的快照必须与 seq 在同一个 tick 里取
+
+`sendHello()` 里从 `snapshotPoint()` 到 `send()` 之间**没有 await**，这是刻意的：flush、序号、
+item 列表必须描述同一个瞬间。中间夹一个 await，那期间落盘的 entry 会既不在快照里、也不在之后
+释放的推送里，消息就凭空消失。`itemPageOf()` 就是为此从 `getItemPage()` 里劈出来的同步版本。
+
+另一半是订阅时机：监听器要在**建快照之前**挂上（否则期间的推送会丢），但挂上后先**攒住**不发，
+等快照发完再按 `seq > 快照序号` 释放。不攒的话，一个跟订阅赛跑的 prompt 会让 user 消息既被快照
+的 flush 发出去、又包含在快照里，界面上出现两条——实测踩到过。
+
+### 断线补齐是「重发整条 item」，不是重放错过的推送
+
+`LiveAgent.touched` 是 `itemId → 它最后一次变化时的 seq`。重连时 `catchUpIds()` 挑出
+`seq > 游标` 的那些 id，`ws.ts` 把每条 item 按当前状态整条重发（`add` 在客户端是 **upsert**）。
+
+这取代了一个 200 条的推送环形缓冲，因为那个缓冲**根本不够用**：实测一篇 2000 字的回答流式
+**1042 个推送**（帧数 ≈ 回合时长 / 80ms，跟字数关系不大），任何长回合中途重连都会掉出缓冲、退化
+成全量快照。而「这几条 item 现在长这样」既比「你错过的 1042 个推送」小，也不需要任何增量算术
+——一百次 append 加一个 set 折叠成它的当前状态就完了。
+
+内存上也更省：每条 item 一个数字，覆盖整个会话；缓冲是 200 份完整 payload，只覆盖 0.2 个长回合。
+
+两个要点：
+
+**补齐帧共享同一个 seq**（快照的那个），因为它们的语义是「截至该序号，这些 item 长这样」。它们是
+重建而非重放，所以 `live.seq` 故意不推进。
+
+**有 id 解析不出来就退回快照。** 那意味着这条 item 已经不在活跃分支上，或者是上一世 agent 铸的
+`live-N`。宁可发一次快照，也不能让客户端悄悄留着服务端已经没有的东西。
+
+### 游标超前于 agent 时要重发快照
+
+agent 空闲 10 分钟被回收后重建，seq 从 0 开始，而客户端还拿着上一世的游标。早先把这种情况当
+「没什么要补的」，结果是界面停在回收前的历史上，而且**无法得知**这期间外部 pi TUI 改过会话。
+现在 `catchUpIds()` 对 `sinceSeq > currentSeq` 返回 `undefined` → 发 `hello`。代价很低（一次缓存
+命中的解析，约 3ms），换掉的是一个会静默显示过期内容的洞。
 
 ### 展示要用 buildContextEntries 而非 getEntries
 
@@ -166,3 +249,12 @@ pi-ai 的 `ThinkingLevel` **不含** `"off"`（那个叫 `ModelThinkingLevel`）
 `Authorization: Bearer <token>`；WS 用 `?token=` 查询参数。
 
 `cwd` 作为查询参数一律 base64url 编码。
+
+**没有 `GET /sessions/:id`。** 会话设置随 WS 的 `hello` 一起到，运行状态靠 `status` 推送。开一个
+会话因此是 1 个 WS 帧，而不是两次 HTTP 往返 + 3 次全量解析。写接口（`PATCH`、`/title`）直接返回
+新的 detail，客户端不再跟一个 GET。
+
+订阅带 `sinceSeq`（客户端从收到的推送里记下的游标）。带了就走增量补齐，没带或者对不上就发 `hello`。
+
+`PROTOCOL` 常量是 wire 版本，由 `/ping` 报出。客户端在保存连接前比对，不匹配就明说要升级哪一端
+——改动 wire 形状时记得 bump，并用 `test/capture.mjs` 重抓 Kotlin 侧的回放 fixture。

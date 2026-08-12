@@ -58,6 +58,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import com.piremote.data.SessionStore
+import com.piremote.net.Item
 import com.piremote.net.ModelDto
 import com.piremote.net.PromptImage
 import kotlinx.coroutines.Dispatchers
@@ -89,11 +90,10 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by store.state.collectAsStateWithLifecycle()
-    val streaming by store.streaming.collectAsStateWithLifecycle()
     val attachments by store.attachments.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
-    val context = LocalContext.current
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // reverseLayout pins the newest content at the bottom for free only while
@@ -146,13 +146,14 @@ fun ChatScreen(
         ?: currentModelDto?.thinkingLevels
         ?: emptyList()).size > 1
 
-    // Load once per session. `store` identity changes when the session does.
-    LaunchedEffect(store) {
-        if (state.items.isEmpty()) store.refresh()
-    }
+    // Consecutive tool rows fold into the assistant message above them. Done here
+    // rather than on the wire so a patch still addresses exactly one item by id.
+    val groups = remember(state.items) { groupRows(state.items) }
+    // reverseLayout: index 0 is the bottom, so the newest group goes first.
+    val rows = remember(groups) { groups.asReversed() }
 
-    // Follow live events only while this session is on screen; other sessions
-    // keep their own stores and resubscribe when reopened.
+    // A snapshot arrives from the socket, so opening a session fetches nothing.
+    // `store` identity changes when the session does.
     DisposableEffect(store) {
         onFollow(store.sessionId)
         onDispose { onUnfollow(store.sessionId) }
@@ -165,15 +166,14 @@ fun ChatScreen(
         // One page per gesture, re-armed by the next drag.
         //
         // Neither end of this is free to get wrong. Sampling only "is the top
-        // in view" latches: a page of PAGE_SIZE entries can collapse into a
-        // handful of items (unknown kinds dropped, tool results folded into
-        // their call), the top stays in view, the flag never leaves `true` and
-        // never re-fires — paging dies with the loader still sitting there.
-        // But re-evaluating on item count alone runs away instead: the loader
-        // holds the highest index, so a reader parked at the very top keeps
-        // reporting the last visible item at the end of the list no matter how
-        // much history lands above it, and the list pages itself back to the
-        // start of the session in one burst.
+        // in view" latches: a page of 50 items can collapse into a handful of
+        // rows (tool calls fold into the message above them), the top stays in
+        // view, the flag never leaves `true` and never re-fires — paging dies
+        // with the loader still sitting there. But re-evaluating on row count
+        // alone runs away instead: the loader holds the highest index, so a
+        // reader parked at the very top keeps reporting the last visible item at
+        // the end of the list no matter how much history lands above it, and the
+        // list pages itself back to the start of the session in one burst.
         var armed = true
         launch {
             listState.interactionSource.interactions.collect {
@@ -232,10 +232,10 @@ fun ChatScreen(
                                     append(detail.cwd.substringAfterLast('/'))
                                     detail.model?.let { append(" · ${it.modelId}") }
                                     if (detail.thinkingLevel.isNotBlank()) append(" · ${detail.thinkingLevel}")
-                                    detail.context?.percent?.let {
+                                    state.status.context?.percent?.let {
                                         append(" · Context ${it.roundToInt()}%")
                                     }
-                                    if (detail.running) append(context.getString(R.string.chat_session_running))
+                                    if (state.status.running) append(ctx.getString(R.string.chat_session_running))
                                 },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -268,8 +268,8 @@ fun ChatScreen(
                 ChatInput(
                     draft = store.draft,
                     onTextChange = store::setDraft,
-                    running = streaming.running,
-                    queued = streaming.queued,
+                    running = state.status.running,
+                    queued = state.status.queued,
                     onSend = { text ->
                         scrollToLatest()
                         store.send(text)
@@ -283,7 +283,7 @@ fun ChatScreen(
                     onGenerateTitle = {
                         store.generateTitle { title, err ->
                             scope.launch {
-                                snackbar.showSnackbar(err ?: context.getString(R.string.chat_title_generated, title))
+                                snackbar.showSnackbar(err ?: ctx.getString(R.string.chat_title_generated, title))
                             }
                         }
                     },
@@ -291,11 +291,11 @@ fun ChatScreen(
                     onSendImage = { uris ->
                         // 方案 A：先挂到附件预览条，配文字后一起发送。
                         scope.launch {
-                            val images = uris.mapNotNull { loadPromptImage(context, it) }
+                            val images = uris.mapNotNull { loadPromptImage(ctx, it) }
                             if (images.isNotEmpty()) {
                                 images.forEach(store::addAttachment)
                             } else {
-                                snackbar.showSnackbar(context.getString(R.string.chat_image_read_failed))
+                                snackbar.showSnackbar(ctx.getString(R.string.chat_image_read_failed))
                             }
                         }
                     },
@@ -331,7 +331,7 @@ fun ChatScreen(
                 state.loading && state.items.isEmpty() ->
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
 
-                state.items.isEmpty() && !streaming.hasContent ->
+                state.items.isEmpty() ->
                     Text(
                         stringResource(R.string.chat_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -353,37 +353,23 @@ fun ChatScreen(
                         reverseLayout = true,
                         contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
-                    // Bottom of the list (index 0): live content. The waiting
-                    // pulse shows only while the agent runs with nothing yet;
-                    // the two states are mutually exclusive.
-                    when {
-                        streaming.hasContent || streaming.compacting ->
-                            item(key = "streaming") {
-                                StreamingBubble(
-                                    text = streaming.text,
-                                    thinking = streaming.thinking,
-                                    thinkingText = streaming.thinkingText,
-                                    toolName = streaming.activeTool?.name,
-                                    toolSubtitle = streaming.activeTool?.subtitle,
-                                    toolOutput = streaming.activeTool?.partialOutput.orEmpty(),
-                                    compacting = streaming.compacting,
-                                )
-                            }
-                        streaming.running ->
-                            item(key = "waiting-pulse") { WaitingPulseLine() }
+                    // Index 0 is the bottom. The agent is working but has produced
+                    // nothing yet: no item exists to render, so the pulse stands in.
+                    if (state.status.running && rows.firstOrNull()?.isEmptyPending() != false) {
+                        item(key = "waiting-pulse") { WaitingPulseLine() }
+                    }
+                    if (state.status.compacting) {
+                        item(key = "compacting") { CompactingLine() }
                     }
 
-                    // Data stays chronological; asReversed() puts the newest
-                    // item at index 0 (bottom), drawing the conversation from
-                    // the bottom up. Expanding a mid-chat card shifts layout
-                    // by at most MaxExpandableHeight (every expandable body
-                    // scrolls within itself) and the bottom anchor holds — no
-                    // stick, no scroll-to-end chasing.
-                    // animateItem placement-only: fades would play when the
-                    // older page is appended at the top (fading in mid-scroll).
-                    items(state.items.asReversed(), key = { it.entryId }) { item ->
+                    // A tool call is its own item on the wire, so the renderer
+                    // decides where it belongs: consecutive tool rows fold into
+                    // the assistant message above them. Nothing needs to pair
+                    // calls with results — the server did that.
+                    items(rows, key = { it.lead.id }) { row ->
                         MessageView(
-                            item = item,
+                            item = row.lead,
+                            tools = row.tools,
                             expanded = state.expanded,
                             onExpand = store::expand,
                             modifier = Modifier.animateItem(
@@ -430,6 +416,61 @@ fun ChatScreen(
 
 /** How close to the loaded top to get before fetching the next page. */
 private const val PREFETCH_DISTANCE = 8
+
+/**
+ * An item and the tool rows that belong under it.
+ *
+ * [lead] carries the row's identity, so a tool arriving under an assistant message
+ * changes that group and nothing else.
+ */
+private data class ChatRow(val lead: Item, val tools: List<Item.Tool>)
+
+/**
+ * Fold consecutive tool items into the assistant message that called them.
+ *
+ * The server emits a tool call as an item of its own, right after the message that
+ * made it, which keeps every patch addressed to a single id. Where those rows are
+ * *drawn* is a rendering decision, and adjacency is all it takes. A tool item with
+ * no assistant above it — its call is on an older page — stands on its own.
+ */
+private fun groupRows(items: List<Item>): List<ChatRow> {
+    val out = ArrayList<ChatRow>(items.size)
+    var i = 0
+    while (i < items.size) {
+        val lead = items[i]
+        if (lead is Item.Assistant) {
+            var end = i + 1
+            while (end < items.size && items[end] is Item.Tool) end++
+            @Suppress("UNCHECKED_CAST")
+            out += ChatRow(lead, items.subList(i + 1, end) as List<Item.Tool>)
+            i = end
+        } else {
+            out += ChatRow(lead, emptyList())
+            i++
+        }
+    }
+    return out
+}
+
+/** A turn that has started but produced nothing yet: the pulse stands in for it. */
+private fun ChatRow.isEmptyPending(): Boolean {
+    val assistant = lead as? Item.Assistant ?: return false
+    return assistant.pending && assistant.text.s.isBlank() && assistant.thinking == null && tools.isEmpty()
+}
+
+/**
+ * Shown while the server compacts context. Not an item: compaction is something
+ * happening to the session, and it lands as a notice once it is done.
+ */
+@Composable
+private fun CompactingLine() {
+    Text(
+        stringResource(R.string.card_compacting),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp),
+    )
+}
 
 /**
  * pi-web's "Waiting for model..." — a pulsing text line at the bottom of the

@@ -1,0 +1,22 @@
+{"t":"hello","sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":1,"items":[{"kind":"notice","id":"529c67c6","at":"2026-08-12T13:03:22.390Z","note":"model","arg":"opencode-go/deepseek-v4-flash"},{"kind":"notice","id":"9ccd5018","at":"2026-08-12T13:03:22.390Z","note":"thinking","arg":"high"}],"hasMore":false,"oldest":"529c67c6","detail":{"id":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","cwd":"/Users/chen/pi-remote-e2e","firstMessage":"","model":{"provider":"opencode-go","modelId":"deepseek-v4-flash"},"thinkingLevel":"high","availableThinkingLevels":["off","high","max"]},"status":{"running":false,"queued":[],"compacting":false,"context":{"tokens":0,"contextWindow":1000000,"percent":0}}}
+{"t":"status","status":{"running":true,"queued":[],"compacting":false,"context":{"tokens":0,"contextWindow":1000000,"percent":0}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":2}
+{"t":"status","status":{"running":true,"queued":[],"compacting":false,"context":{"tokens":6,"contextWindow":1000000,"percent":0.0006000000000000001}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":3}
+{"t":"add","item":{"kind":"user","id":"2b644a72","at":"2026-08-12T13:03:22.715Z","text":{"s":"用 bash 输出 1 到 3，然后一句话总结"}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":4}
+{"t":"add","item":{"kind":"assistant","id":"live-1","at":"2026-08-12T13:03:22.716Z","text":{"s":""},"pending":true},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":5}
+{"t":"patch","id":"live-1","append":{"f":"thinking","s":"The"},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":6}
+{"t":"patch","id":"live-1","append":{"f":"thinking","s":" user wants me to"},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":7}
+{"t":"patch","id":"live-1","append":{"f":"thinking","s":" use bash to output 1 to 3, then"},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":8}
+{"t":"patch","id":"live-1","append":{"f":"thinking","s":" summarize in one sentence. Simple task."},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":9}
+{"t":"status","status":{"running":true,"queued":[],"compacting":false,"context":{"tokens":4705,"contextWindow":1000000,"percent":0.4705}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":10}
+{"t":"patch","id":"live-1","set":{"pending":false,"usage":{"in":20,"out":77,"cacheRead":4608,"cost":0.0000186312}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":11}
+{"t":"add","item":{"kind":"tool","id":"04b70a59#1","at":"2026-08-12T13:03:25.605Z","name":"bash","output":{"s":""},"callId":"call_00_Hh2P98gWYyMPan3Wc9Ru8941","title":"echo 1; echo 2; echo 3","args":{"s":"command: echo 1; echo 2; echo 3"},"running":true},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":12}
+{"t":"patch","id":"04b70a59#1","append":{"f":"output","s":"1\n2\n3\n"},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":13}
+{"t":"patch","id":"04b70a59#1","set":{"running":false},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":14}
+{"t":"status","status":{"running":true,"queued":[],"compacting":false,"context":{"tokens":4707,"contextWindow":1000000,"percent":0.4707}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":15}
+{"t":"patch","id":"04b70a59#1","set":{"running":false},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":16}
+{"t":"add","item":{"kind":"assistant","id":"live-2","at":"2026-08-12T13:03:25.626Z","text":{"s":""},"pending":true},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":17}
+{"t":"patch","id":"live-2","append":{"f":"text","s":"bash 成功输出了 1、2、3 "},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":18}
+{"t":"patch","id":"live-2","append":{"f":"text","s":"三个数字。"},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":19}
+{"t":"status","status":{"running":true,"queued":[],"compacting":false,"context":{"tokens":4739,"contextWindow":1000000,"percent":0.4739}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":20}
+{"t":"patch","id":"live-2","set":{"pending":false,"usage":{"in":115,"out":16,"cacheRead":4608,"cost":0.0000167412}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":21}
+{"t":"status","status":{"running":false,"queued":[],"compacting":false,"context":{"tokens":4739,"contextWindow":1000000,"percent":0.4739}},"sessionId":"019ff611-ff0d-7764-bf5d-a3dabeccdc33","seq":22}

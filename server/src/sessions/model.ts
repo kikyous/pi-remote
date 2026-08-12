@@ -2,6 +2,8 @@ import { statSync } from "node:fs";
 
 import { type SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 
+import { itemsFromEntries } from "../items.ts";
+import type { Item } from "../protocol.ts";
 import type { Located } from "./scan.ts";
 
 /**
@@ -41,8 +43,18 @@ export interface SessionModel {
 	 */
 	entries: SessionEntry[];
 	leafId: string | null;
-	/** Raw (un-slimmed) entry by id, for `/full`. */
+	/** Raw (un-shortened) entry by id, for `/full`. */
 	entry(id: string): SessionEntry | undefined;
+	/**
+	 * The whole branch as items, built once per file version.
+	 *
+	 * Deliberately the *whole* branch rather than per page: a tool call and its
+	 * result are separate entries, so pairing them page by page would leave a call
+	 * whose result sits in a newer page stuck showing "running" forever. That is
+	 * the bug the client used to work around by re-linking its entire loaded list
+	 * after every change.
+	 */
+	items(): Item[];
 }
 
 /**
@@ -114,10 +126,13 @@ export function forgetModel(path: string): void {
 }
 
 function fromManager(sm: EntryTree): SessionModel {
+	const entries = sm.buildContextEntries();
+	let items: Item[] | undefined;
 	return {
-		entries: sm.buildContextEntries(),
+		entries,
 		leafId: sm.getLeafId(),
 		entry: (id) => sm.getEntry(id),
+		items: () => (items ??= itemsFromEntries(entries)),
 	};
 }
 

@@ -57,8 +57,8 @@ class EventSocket(
     private val _status = MutableStateFlow(SocketStatus.Disconnected)
     val status: StateFlow<SocketStatus> = _status.asStateFlow()
 
-    private val _messages = MutableSharedFlow<WsMessage>(extraBufferCapacity = 256)
-    val messages: SharedFlow<WsMessage> = _messages.asSharedFlow()
+    private val _pushes = MutableSharedFlow<Push>(extraBufferCapacity = 256)
+    val pushes: SharedFlow<Push> = _pushes.asSharedFlow()
 
     /** sessionId → last seq delivered, the resume point after a reconnect. */
     private val cursors = ConcurrentHashMap<String, Long>()
@@ -68,6 +68,20 @@ class EventSocket(
     private var connectJob: Job? = null
     private var attempt = 0
     private var closedByUs = false
+
+    /**
+     * Drop the resume cursor and re-subscribe, which answers with a fresh snapshot.
+     *
+     * The refresh button, and the recovery path when the loaded page turns out to be
+     * inconsistent. There is nothing to fetch over HTTP: `hello` carries the newest
+     * page, the settings and the status in one frame.
+     */
+    fun resync(sessionId: String) {
+        cursors.remove(sessionId)
+        val live = socket
+        if (live != null && _status.value == SocketStatus.Connected) sendSubscribe(live, sessionId)
+        else reconnectNow()
+    }
 
     fun follow(sessionId: String) {
         if (!wanted.add(sessionId)) return
@@ -141,15 +155,15 @@ class EventSocket(
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
-            val message = runCatching {
-                client.json.decodeFromString(WsMessage.serializer(), text)
+            val push = runCatching {
+                client.json.decodeFromString(Push.serializer(), text)
             }.onFailure { android.util.Log.e("PiRemoteWS", "decode failed: ${text.take(200)}", it) }
                 .getOrNull() ?: return
 
-            message.sessionId?.let { id ->
-                message.seq?.let { seq -> cursors[id] = seq }
+            push.sessionId?.let { id ->
+                push.cursor?.let { seq -> cursors[id] = seq }
             }
-            _messages.tryEmit(message)
+            _pushes.tryEmit(push)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {

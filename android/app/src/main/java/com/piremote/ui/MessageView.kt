@@ -80,48 +80,51 @@ import android.graphics.BitmapFactory
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
-import com.piremote.data.ChatItem
-import com.piremote.data.EditDiff
-import com.piremote.data.ToolCall
-import com.piremote.data.ToolResult
-import com.piremote.data.Truncation
-import com.piremote.data.key
+import com.piremote.net.BlobDto
+import com.piremote.net.Item
+import com.piremote.net.MoreDto
+import com.piremote.net.TextDto
+import com.piremote.net.ToolDiffDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Renders one chat item.
+ * Renders one conversation row: an item, plus the tool rows it produced.
  *
- * User turns get a tinted block; assistant turns are laid out bare, closer to
- * how a terminal reads. Tool calls collapse to a single line and open on tap.
+ * User turns get a tinted block; assistant turns are laid out bare, closer to how a
+ * terminal reads. Tool calls collapse to a single line and open on tap.
+ *
+ * A streaming message is not a separate case. It is an [Item.Assistant] with
+ * `pending`, and the only differences are that its cards breathe and its text stays
+ * plain — there used to be a second renderer for exactly this, kept in step by hand.
  */
 @Composable
 fun MessageView(
-    item: ChatItem,
+    item: Item,
+    tools: List<Item.Tool>,
     expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
+    onExpand: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (item) {
-        is ChatItem.User -> UserBlock(item, expanded, onExpand, modifier)
-        is ChatItem.Assistant -> AssistantBlock(item, expanded, onExpand, modifier)
-        is ChatItem.OrphanToolResult -> ToolResultBlock(item.result, expanded, onExpand, modifier)
-        is ChatItem.Bash -> BashBlock(item, expanded, onExpand, modifier)
-        is ChatItem.Notice -> NoticeBlock(item, modifier)
+        is Item.User -> UserBlock(item, expanded, onExpand, modifier)
+        is Item.Assistant -> AssistantBlock(item, tools, expanded, onExpand, modifier)
+        is Item.Tool -> ToolRowCard(item, expanded, onExpand, modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+        is Item.Notice -> NoticeBlock(item, modifier)
     }
 }
 
 @Composable
 private fun UserBlock(
-    item: ChatItem.User,
+    item: Item.User,
     expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
+    onExpand: (String) -> Unit,
     modifier: Modifier,
 ) {
-    // Fetch the stripped image payload as soon as the message is on screen.
-    val image = item.image
-    LaunchedEffect(image?.key()) {
-        if (image != null && !expanded.containsKey(image.key())) onExpand(image)
+    // Fetch the placeholder's bytes as soon as the message is on screen.
+    val image: BlobDto? = item.images.firstOrNull()
+    LaunchedEffect(image?.ref) {
+        if (image != null && !expanded.containsKey(image.ref)) onExpand(image.ref)
     }
 
     Row(
@@ -136,15 +139,15 @@ private fun UserBlock(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.End,
         ) {
-            if (item.text.isNotBlank()) {
+            if (item.text.s.isNotBlank()) {
                 Text(
-                    item.text,
+                    item.text.s,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
             image?.let { img ->
-                val base64 = expanded[img.key()]
+                val base64 = expanded[img.ref]
                 // Decode off the frame: produceState runs on the main dispatcher.
                 val bitmap by produceState<Bitmap?>(initialValue = null, base64) {
                     value = withContext(Dispatchers.Default) {
@@ -160,7 +163,7 @@ private fun UserBlock(
                             contentDescription = stringResource(R.string.image),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = if (item.text.isNotBlank()) 6.dp else 0.dp)
+                                .padding(top = if (item.text.s.isNotBlank()) 6.dp else 0.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable { fullscreen = true },
                         )
@@ -180,21 +183,22 @@ private fun UserBlock(
 
 @Composable
 private fun AssistantBlock(
-    item: ChatItem.Assistant,
+    item: Item.Assistant,
+    tools: List<Item.Tool>,
     expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
+    onExpand: (String) -> Unit,
     modifier: Modifier,
 ) {
     // Three stacked cards, in the order the turn actually happened: thinking,
     // tool calls, then the reply text. Each can fold to its header rows.
     Column(modifier.fillMaxWidth()) {
-        item.thinking?.let { ThinkingCard(it.preview, it.truncation, expanded, onExpand) }
+        item.thinking?.let { ThinkingCard(it, active = item.pending, expanded = expanded, onExpand = onExpand) }
 
-        if (item.toolCalls.isNotEmpty()) {
-            ToolCallsCard(item.toolCalls, item.entryId, expanded, onExpand)
+        if (tools.isNotEmpty()) {
+            ToolCallsCard(tools, expanded, onExpand)
         }
 
-        if (item.text.isNotBlank() || item.error != null) {
+        if (item.text.s.isNotBlank() || item.error != null) {
             // Text keeps its own softer card (14dp, no border) — it is a body
             // of prose, not a structured block, and pairs with the user bubble.
             Column(
@@ -205,15 +209,26 @@ private fun AssistantBlock(
                     .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
-                if (item.text.isNotBlank()) {
-                    // Settled messages are fully parsed: code blocks, tables and
-                    // links read properly. The streaming bubble stays plain.
-                    Markdown(
-                        item.text,
-                        typography = LocalMarkdownTypography.current,
-                        components = ChatMarkdownComponents,
-                    )
+                if (item.text.s.isNotBlank()) {
+                    // Markdown is parsed once, when the message settles. While it
+                    // streams the text stays plain: re-parsing a growing string a
+                    // dozen times a second is what actually drops frames on a long
+                    // answer, and half-written markdown renders wrong anyway.
+                    if (item.pending) {
+                        Text(
+                            item.text.s,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    } else {
+                        Markdown(
+                            item.text.s,
+                            typography = LocalMarkdownTypography.current,
+                            components = ChatMarkdownComponents,
+                        )
+                    }
                 }
+                item.text.more?.let { ExpandRow(it, expanded, onExpand) }
 
                 item.error?.let {
                     Text(
@@ -229,16 +244,16 @@ private fun AssistantBlock(
         // Per-turn token usage, pi-TUI style. Rendered outside the card,
         // snug against it, left-aligned with the card's text. Skipped when the
         // turn used nothing (failed/aborted runs report all-zero usage).
+        // The server omits an all-zero usage (what a failed or aborted turn
+        // reports), so its presence is the whole condition.
         item.usage?.let { usage ->
-            if (!usage.isEmpty) {
-                Text(
-                    usage.summary,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 2.dp),
-                )
-            }
+            Text(
+                usage.summary,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 2.dp),
+            )
         }
     }
 }
@@ -289,13 +304,13 @@ private val ChatMarkdownComponents =
  * Line pairing comes from [simpleLineDiff] in DiffView.kt.
  */
 @Composable
-private fun EditDiffView(diff: EditDiff, modifier: Modifier = Modifier) {
+private fun EditDiffView(diff: ToolDiffDto, modifier: Modifier = Modifier) {
     // No horizontal scroll here: per-line backgrounds need a bounded width to
     // span the card. Long lines wrap instead of scrolling. Vertical is capped
     // the same way as the other expandable bodies: a long diff scrolls within
     // the card instead of growing the row unbounded.
     ExpandableBody(Modifier.padding(bottom = 4.dp)) {
-        diff.filePath?.let {
+        diff.path?.let {
             Text(
                 "--- $it",
                 style = MonoStyle,
@@ -312,7 +327,7 @@ private fun EditDiffView(diff: EditDiff, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(vertical = 2.dp),
                 )
             }
-            val rows = simpleLineDiff(hunk.oldText.lines(), hunk.newText.lines())
+            val rows = simpleLineDiff(hunk.old.lines(), hunk.new.lines())
             for (row in rows) {
                 DiffLine(row)
             }
@@ -333,10 +348,9 @@ internal val ToolErrBg = Color(0x0DF87171) // rgba(248,113,113,0.05)
 
 @Composable
 private fun ToolCallsCard(
-    calls: List<ToolCall>,
-    entryId: String,
+    calls: List<Item.Tool>,
     expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
+    onExpand: (String) -> Unit,
 ) {
     // One card per call, pi-web style: each tool call is its own tinted card,
     // stacked with a small gap instead of one merged surfaceVariant block.
@@ -352,7 +366,7 @@ private fun ToolCallsCard(
             // so without it the cards of one turn would share a slot and swap
             // state whenever the call list shifts.
             key(call.id) {
-                ToolCallRow(call, entryId, expanded, onExpand)
+                ToolRowCard(call, expanded, onExpand)
             }
         }
     }
@@ -360,25 +374,27 @@ private fun ToolCallsCard(
 
 @Composable
 private fun ThinkingCard(
-    preview: String,
-    truncation: Truncation?,
+    thinking: TextDto,
+    active: Boolean,
     expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
+    onExpand: (String) -> Unit,
 ) {
     // Saveable, not remembered: a LazyColumn item that scrolls out of view is
     // disposed, and a plain remember would re-collapse the card behind the
     // user's back. The list keys items by entryId, which scopes the saved
     // state to this message.
     var open by rememberSaveable { mutableStateOf(false) }
-    val full = truncation?.let { expanded[it.key()] }
+    val more = thinking.more
+    val full = more?.let { expanded[it.ref] }
 
     // pi-web thinking card: neutral bordered card, plain "Thinking" header
     // (no chevron), body below a hairline divider.
     ThinkingCardShell(
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        active = active,
         onClick = {
             open = !open
-            if (open && truncation != null && full == null) onExpand(truncation)
+            if (open && more != null && full == null) onExpand(more.ref)
         },
     ) {
         if (open) {
@@ -389,46 +405,58 @@ private fun ThinkingCard(
             // scrolls within itself when longer.
             ExpandableBody {
                 Text(
-                    full ?: preview,
+                    full ?: thinking.s,
                     style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                 )
             }
-            if (full == null && truncation != null) {
-                LoadingMore(truncation.displaySize)
+            if (full == null && more != null) {
+                LoadingMore(more.displaySize)
             }
         }
     }
 }
 
+/**
+ * One tool row: the call, its arguments or diff, and its output.
+ *
+ * Serves every shape a tool takes — a call with a pending result, a finished call, a
+ * `/bash` execution, and a result whose call sits on an older page — because the
+ * server hands all four over as the same item. There used to be three composables
+ * here, plus client-side logic to pair calls with results across page boundaries.
+ */
 @Composable
-private fun ToolCallRow(
-    call: ToolCall,
-    entryId: String,
+private fun ToolRowCard(
+    tool: Item.Tool,
     expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
+    onExpand: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val result = call.result
-    val error = result?.isError == true
+    val error = tool.isError || (tool.exit ?: 0) != 0
     val borderColor = if (error) ToolErrBorder else ToolOkBorder
 
     ToolCallCard(
-        name = call.name,
+        name = tool.name.ifBlank { stringResource(R.string.tool_result) },
         nameColor = if (error) ToolErrRed else ToolOkGreen,
-        subtitle = call.subtitle,
+        subtitle = tool.title,
         borderColor = borderColor,
         bgColor = if (error) ToolErrBg else ToolOkBg,
+        modifier = modifier,
+        // A running tool opens itself so its output is visible as it arrives, and
+        // breathes so it reads as alive without a spinner.
+        startsOpen = tool.running,
+        breathing = tool.running,
     ) {
-        val diff = call.diff
-        if (diff == null && call.arguments.isNotBlank()) {
-            // JSON arguments, pi-web style: pre-wrap, dim mono, subtle bg,
-            // hairline divider in the card's tint. Height-capped with
-            // internal scroll, same as the other expandable bodies.
+        val diff = tool.diff
+        val args = tool.args
+        if (diff == null && args != null && args.s.isNotBlank()) {
+            // Arguments, pi-web style: pre-wrap, dim mono, subtle bg, hairline
+            // divider in the card's tint, height-capped with internal scroll.
             ToolDivider(borderColor)
             ExpandableBody(Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))) {
                 Text(
-                    call.arguments,
+                    expanded[args.more?.ref] ?: args.s,
                     style = MonoStyle.copy(fontSize = 12.sp, lineHeight = 18.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -439,15 +467,29 @@ private fun ToolCallRow(
             ToolDivider(borderColor)
             EditDiffView(diff, Modifier.padding(vertical = 4.dp))
         }
-        // Inside the card's own padding: the body sections below carry theirs
-        // via the Box wrapper, this row sits directly in the card column.
-        call.truncation?.let {
+        args?.more?.let {
             ExpandRow(it, expanded, onExpand, Modifier.padding(start = 10.dp, end = 10.dp, bottom = 6.dp))
         }
-        if (result != null) {
+
+        val full = expanded[tool.output.more?.ref]
+        val body = full ?: tool.output.s
+        if (body.isNotBlank() || tool.hasImage) {
             ToolDivider(borderColor)
-            Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                ToolResultBody(result, expanded, onExpand)
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                if (tool.hasImage) {
+                    Text(
+                        stringResource(
+                            R.string.tool_image_truncated,
+                            tool.output.more?.displaySize ?: stringResource(R.string.not_loaded),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (body.isNotBlank()) ScrollableCode(body, error = error)
+                if (full == null && !tool.hasImage) {
+                    tool.output.more?.let { ExpandRow(it, expanded, onExpand) }
+                }
             }
         }
     }
@@ -644,84 +686,16 @@ internal fun ThinkingCardShell(
 
 
 @Composable
-private fun ToolResultBlock(
-    result: ToolResult,
-    expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
-    modifier: Modifier,
-) {
-    CardShell(modifier = modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Text(
-                result.toolName.ifBlank { stringResource(R.string.tool_result) },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            ToolResultBody(result, expanded, onExpand)
-        }
-    }
-}
-
-@Composable
-private fun ToolResultBody(result: ToolResult, expanded: Map<String, String>, onExpand: (Truncation) -> Unit) {
-    val truncation = result.truncation
-    val full = truncation?.let { expanded[it.key()] }
-
-    if (result.hasImage && full == null) {
-        Text(
-            stringResource(R.string.tool_image_truncated, truncation?.displaySize ?: stringResource(R.string.not_loaded)),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-
-    val body = full ?: result.text
-    if (body.isNotBlank()) {
-        ScrollableCode(body, error = result.isError)
-    }
-    if (full == null && truncation != null && !result.hasImage) {
-        ExpandRow(truncation, expanded, onExpand)
-    }
-}
-
-@Composable
-private fun BashBlock(
-    item: ChatItem.Bash,
-    expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
-    modifier: Modifier,
-) {
-    val full = item.truncation?.let { expanded[it.key()] }
-    val error = (item.exitCode ?: 0) != 0
-    val borderColor = if (error) ToolErrBorder else ToolOkBorder
-
-    // pi-web renders bash executions as tool-call cards: tinted border, mono
-    // green/red "bash" name, command preview, collapsible output.
-    ToolCallCard(
-        name = "bash",
-        nameColor = if (error) ToolErrRed else ToolOkGreen,
-        subtitle = item.command,
-        borderColor = borderColor,
-        bgColor = if (error) ToolErrBg else ToolOkBg,
-        modifier = modifier,
-    ) {
-        ToolDivider(borderColor)
-        Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            ScrollableCode(full ?: item.output, error = error)
-        }
-        if (full == null) item.truncation?.let { ExpandRow(it, expanded, onExpand) }
-    }
-}
-
-@Composable
-private fun NoticeBlock(item: ChatItem.Notice, modifier: Modifier) {
-    val text = when (item.kind) {
-        ChatItem.NoticeKind.Generic -> item.text
-        ChatItem.NoticeKind.Compaction -> stringResource(R.string.notice_compacted)
-        ChatItem.NoticeKind.BranchSummary -> stringResource(R.string.notice_branch_summary)
-        ChatItem.NoticeKind.ModelChange -> stringResource(R.string.notice_model_change, item.arg)
-        ChatItem.NoticeKind.ThinkingLevel -> stringResource(R.string.notice_thinking_level, item.arg)
-        ChatItem.NoticeKind.SessionNamed -> stringResource(R.string.notice_session_named, item.arg)
+private fun NoticeBlock(item: Item.Notice, modifier: Modifier) {
+    val arg = item.arg.orEmpty()
+    val text = when (item.note) {
+        "compaction" -> stringResource(R.string.notice_compacted)
+        "branch" -> stringResource(R.string.notice_branch_summary)
+        "model" -> stringResource(R.string.notice_model_change, arg)
+        "thinking" -> stringResource(R.string.notice_thinking_level, arg)
+        "named" -> stringResource(R.string.notice_session_named, arg)
+        // "text", and anything a newer bridge invents: show what it sent.
+        else -> arg
     }
     Row(
         modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -860,17 +834,17 @@ internal fun ScrollableCode(text: String, error: Boolean = false) {
 
 @Composable
 private fun ExpandRow(
-    truncation: Truncation,
+    more: MoreDto,
     expanded: Map<String, String>,
-    onExpand: (Truncation) -> Unit,
+    onExpand: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (expanded.containsKey(truncation.key())) return
+    if (expanded.containsKey(more.ref)) return
     Text(
-        stringResource(R.string.tool_expand_all, truncation.displaySize),
+        stringResource(R.string.tool_expand_all, more.displaySize),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.clickable { onExpand(truncation) }.padding(top = 4.dp),
+        modifier = modifier.clickable { onExpand(more.ref) }.padding(top = 4.dp),
     )
 }
 

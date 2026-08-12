@@ -41,6 +41,7 @@ import com.piremote.data.Connection
 import com.piremote.data.normalizeUrl
 import com.piremote.data.parseConnectPayload
 import com.piremote.net.PiRemoteClient
+import com.piremote.net.WIRE_PROTOCOL
 import kotlinx.coroutines.launch
 
 /**
@@ -89,6 +90,14 @@ fun ConnectScreen(
             val result = runCatching { probe.ping() }
             testing = false
             result.onSuccess { ping ->
+                // The wire protocol is checked here rather than discovered later as
+                // an unparseable frame or an empty screen. Both sides ship together,
+                // so a mismatch means one of them was not upgraded.
+                if (ping.protocol != WIRE_PROTOCOL) {
+                    ok = false
+                    message = context.getString(R.string.conn_protocol_mismatch, ping.version, ping.protocol, WIRE_PROTOCOL)
+                    return@onSuccess
+                }
                 ok = true
                 message = context.getString(R.string.conn_connected, ping.version)
                 onSave(Connection(normalized, rawToken.trim()))

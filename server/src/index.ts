@@ -8,7 +8,6 @@ import {
 	listModels,
 	loadedSessionState,
 	sendPrompt,
-	sessionContextUsage,
 	type SessionPatch,
 	updateSession,
 } from "./commands.ts";
@@ -16,17 +15,15 @@ import { lanAddresses, parseArgs } from "./config.ts";
 import { buildConnectPayload, renderConnectQr } from "./qr.ts";
 import { gitCommitDiff, gitCommits, gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
-import { API_PREFIX, type PromptImageDto } from "./protocol.ts";
+import { API_PREFIX, PROTOCOL, type PromptImageDto } from "./protocol.ts";
 import { setLiveSource } from "./sessions/model.ts";
-import type { FullPart } from "./slim.ts";
-import { getEntryPage, getFullPart, getSessionDetail, listProjects, listSessions, setRunningProbe } from "./store.ts";
+import { getDetail, getFullByRef, getItemPage, listProjects, listSessions, setLiveStateProbe, setRunningProbe } from "./store.ts";
 import { attachWebSocket } from "./ws.ts";
 
 const VERSION = "0.1.0";
 
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
-const FULL_PARTS = new Set<FullPart>(["text", "thinking", "image", "arguments", "output"]);
 
 function main(): void {
 	let config;
@@ -41,11 +38,14 @@ function main(): void {
 	// would be a cycle. A loaded agent's tree outranks the file on disk.
 	setRunningProbe(isRunning);
 	setLiveSource(liveTree);
+	setLiveStateProbe(loadedSessionState);
 
 	const router = new Router();
 
-	/** Cheap reachability + auth check for the client's connection setup screen. */
-	router.get(`${API_PREFIX}/ping`, () => ({ ok: true, version: VERSION }));
+	// Cheap reachability + auth check, and the version handshake: the app compares
+	// `protocol` and says plainly that the bridge needs upgrading rather than
+	// failing somewhere downstream.
+	router.get(`${API_PREFIX}/ping`, () => ({ ok: true, version: VERSION, protocol: PROTOCOL }));
 
 	router.get(`${API_PREFIX}/projects`, () => listProjects());
 
@@ -54,28 +54,20 @@ function main(): void {
 		return listSessions(cwd);
 	});
 
-	router.get(`${API_PREFIX}/sessions/:id`, async (ctx) => {
-		const detail = await getSessionDetail(ctx.params.id!);
-		// A loaded agent holds the authoritative model and thinking level — the
-		// file may lag it, or not exist yet for a session created moments ago.
-		const live = loadedSessionState(ctx.params.id!);
-		const context = await sessionContextUsage(ctx.params.id!, detail.model);
-		return { ...detail, ...(live ?? {}), context };
-	});
-
-	router.get(`${API_PREFIX}/sessions/:id/entries`, (ctx) => {
+	// There is no `GET /sessions/:id`: the settings arrive in the WebSocket's
+	// `hello`, and what a session is *doing* is pushed as status. One round trip
+	// opens a session instead of two, and nothing polls.
+	router.get(`${API_PREFIX}/sessions/:id/items`, (ctx) => {
 		const before = ctx.query.get("before") ?? undefined;
-		return getEntryPage(ctx.params.id!, before, parseLimit(ctx.query.get("limit")));
+		return getItemPage(ctx.params.id!, before, parseLimit(ctx.query.get("limit")));
 	});
 
-	router.get(`${API_PREFIX}/sessions/:id/entries/:entryId/full`, (ctx) => {
-		const part = parsePart(ctx.query.get("part"));
-		const rawIndex = ctx.query.get("index");
-		const index = rawIndex === null ? undefined : Number(rawIndex);
-		if (index !== undefined && !Number.isInteger(index)) {
-			throw new HttpError(400, "index must be an integer", "bad_index");
-		}
-		return getFullPart(ctx.params.id!, ctx.params.entryId!, part, index);
+	// One endpoint for every kind of shortened content, addressed by the opaque
+	// handle the item carried.
+	router.get(`${API_PREFIX}/sessions/:id/full`, (ctx) => {
+		const ref = ctx.query.get("ref");
+		if (!ref) throw new HttpError(400, "Missing ref parameter", "missing_ref");
+		return getFullByRef(ctx.params.id!, ref);
 	});
 
 	router.get(`${API_PREFIX}/models`, () => listModels());
@@ -131,16 +123,23 @@ function main(): void {
 	router.post(`${API_PREFIX}/sessions/:id/abort`, (ctx) => abortSession(ctx.params.id!));
 
 	// AI-generated title from the conversation; persisted as the session name.
-	router.post(`${API_PREFIX}/sessions/:id/title`, (ctx) => generateSessionTitle(ctx.params.id!));
+	// Answers with the new detail, so the client does not follow up with a read.
+	router.post(`${API_PREFIX}/sessions/:id/title`, async (ctx) => {
+		await generateSessionTitle(ctx.params.id!);
+		return getDetail(ctx.params.id!);
+	});
 
-	router.patch(`${API_PREFIX}/sessions/:id`, (ctx) => {
+	router.patch(`${API_PREFIX}/sessions/:id`, async (ctx) => {
 		const body = asRecord(ctx.body);
 		const patch: SessionPatch = {};
 		if (typeof body.provider === "string") patch.provider = body.provider;
 		if (typeof body.modelId === "string") patch.modelId = body.modelId;
 		if (typeof body.thinkingLevel === "string") patch.thinkingLevel = body.thinkingLevel;
 		if (typeof body.name === "string") patch.name = body.name;
-		return updateSession(ctx.params.id!, patch);
+		// Switching model can clamp the thinking level, so the answer is the whole
+		// new detail rather than a list of touched field names — one round trip.
+		await updateSession(ctx.params.id!, patch);
+		return getDetail(ctx.params.id!);
 	});
 
 	const server = createServer(router.listener(config.token));
@@ -223,14 +222,6 @@ function parseLimit(raw: string | null): number {
 		throw new HttpError(400, "limit must be a positive integer", "bad_limit");
 	}
 	return Math.min(value, MAX_PAGE_LIMIT);
-}
-
-function parsePart(raw: string | null): FullPart {
-	if (raw === null) throw new HttpError(400, "Missing part parameter", "missing_part");
-	if (!FULL_PARTS.has(raw as FullPart)) {
-		throw new HttpError(400, `part must be one of ${[...FULL_PARTS].join(", ")}`, "bad_part");
-	}
-	return raw as FullPart;
 }
 
 function printBanner(port: number, host: string, token: string): void {

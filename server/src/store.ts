@@ -3,10 +3,10 @@ import { basename } from "node:path";
 import { estimateTokens, type SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { HttpError } from "./http.ts";
-import type { EntryPageDto, ProjectDto, SessionDetailDto, SessionSummaryDto } from "./protocol.ts";
+import type { ItemPageDto, ProjectDto, SessionDetailDto, SessionSummaryDto } from "./protocol.ts";
+import { extractFullPart, parseRef } from "./refs.ts";
 import { getModel } from "./sessions/model.ts";
 import { idOfPath, knows, type Located, locate, type SessionSummary, summaries, summaryOf } from "./sessions/scan.ts";
-import { extractFullPart, type FullPart, slimEntry } from "./slim.ts";
 
 /**
  * Read-only view over `~/.pi/agent/sessions`.
@@ -87,20 +87,49 @@ export function setRunningProbe(probe: (sessionId: string) => boolean): void {
 	runningProbe = probe;
 }
 
-export async function getSessionDetail(id: string): Promise<SessionDetailDto> {
+/**
+ * Live model and thinking level from a loaded agent, which outrank the file.
+ *
+ * A brand-new session has no file yet, and a session whose model just changed may
+ * not have flushed the entry — in both cases the agent in memory is the truth.
+ * Injected for the same reason as [setRunningProbe].
+ */
+let liveStateProbe: (sessionId: string) => LiveSessionState | undefined = () => undefined;
+
+export interface LiveSessionState {
+	model: { provider: string; modelId: string } | null;
+	thinkingLevel: string;
+	availableThinkingLevels: string[];
+	/** Present when the agent knows a name the file may not have flushed yet. */
+	name?: string;
+}
+
+export function setLiveStateProbe(probe: (sessionId: string) => LiveSessionState | undefined): void {
+	liveStateProbe = probe;
+}
+
+/** The settings half of a session. What is *running* lives in the status push. */
+export async function getDetail(id: string): Promise<SessionDetailDto> {
 	const info = await summaryOf(id);
 	if (!info) throw new HttpError(404, `No session with id ${id}`, "session_not_found");
-	// One parse, shared with the `/entries` request that follows on the client's
-	// session-open and with the token estimate below.
+	// One parse, shared with the item page built alongside it in a `hello`.
 	const model = getModel(info);
-	const entries = model?.entries ?? [];
+	const live = liveStateProbe(id);
 
 	return {
-		...toSummary(info),
-		...readSettings(entries),
-		leafId: model?.leafId ?? null,
-		totalEntries: entries.length,
-		running: runningProbe(id),
+		id: info.id,
+		cwd: info.cwd,
+		...(info.name ? { name: info.name } : {}),
+		firstMessage: info.firstMessage,
+		...readSettings(model?.entries ?? []),
+		...(live
+			? {
+					model: live.model,
+					thinkingLevel: live.thinkingLevel,
+					availableThinkingLevels: live.availableThinkingLevels,
+					...(live.name ? { name: live.name } : {}),
+				}
+			: {}),
 	};
 }
 
@@ -125,20 +154,35 @@ export async function estimateSessionTokens(id: string): Promise<number | null> 
 }
 
 /**
- * One page of history, newest-last, walking backwards from `before`.
+ * One page of the conversation, newest-last, walking backwards from `before`.
  *
- * The page comes off the active branch with compaction applied — a session is a
- * tree, and abandoned branches are not what the user is looking at.
+ * Pages are cut out of the item list for the *whole* active branch, not built per
+ * page: a tool call and its result are separate entries, and a page boundary
+ * between them would leave the call rendered as "running" with its output stranded
+ * on the other side. Building the branch once is what makes that impossible — and
+ * it costs nothing, being memoized on the cached parse.
  */
-export async function getEntryPage(id: string, before: string | undefined, limit: number): Promise<EntryPageDto> {
-	const model = getModel(await requireLocated(id));
-	// A session created moments ago has no file until its first append.
-	if (!model) return { entries: [], hasMore: false, oldestId: null, leafId: null };
-	const entries = model.entries;
+export async function getItemPage(id: string, before: string | undefined, limit: number): Promise<ItemPageDto> {
+	return itemPageOf(await requireLocated(id), before, limit);
+}
 
-	let end = entries.length;
+/**
+ * The synchronous half of [getItemPage].
+ *
+ * A `hello` has to read the page and the live sequence number in the same tick:
+ * with an `await` between them, an entry landing in the gap ends up in neither
+ * the snapshot nor the pushes that follow it, and its message vanishes. Callers
+ * that already hold the `Located` use this and stay atomic.
+ */
+export function itemPageOf(located: Located, before: string | undefined, limit: number): ItemPageDto {
+	const model = getModel(located);
+	// A session created moments ago has no file until its first append.
+	if (!model) return { items: [], hasMore: false, oldest: null };
+	const all = model.items();
+
+	let end = all.length;
 	if (before !== undefined) {
-		const idx = entries.findIndex((e) => e.id === before);
+		const idx = all.findIndex((item) => item.id === before);
 		if (idx === -1) {
 			throw new HttpError(409, `Cursor ${before} is not on the active branch`, "stale_cursor");
 		}
@@ -146,30 +190,25 @@ export async function getEntryPage(id: string, before: string | undefined, limit
 	}
 
 	const start = Math.max(0, end - limit);
-	const page = entries.slice(start, end);
-
 	return {
-		entries: page.map(slimEntry),
+		items: all.slice(start, end),
 		hasMore: start > 0,
-		oldestId: page[0]?.id ?? null,
-		leafId: model.leafId,
+		oldest: all[start]?.id ?? null,
 	};
 }
 
-/** The untruncated original of one shrunk part. */
-export async function getFullPart(
-	id: string,
-	entryId: string,
-	part: FullPart,
-	index: number | undefined,
-): Promise<{ content: string }> {
-	const model = getModel(await requireLocated(id));
-	const entry = model?.entry(entryId);
-	if (!entry) throw new HttpError(404, `No entry ${entryId} in session ${id}`, "entry_not_found");
+/** The original behind a `more` handle, whatever kind of content it points at. */
+export async function getFullByRef(id: string, ref: string): Promise<{ content: string }> {
+	const parsed = parseRef(ref);
+	if (!parsed) throw new HttpError(400, `Malformed ref ${ref}`, "bad_ref");
 
-	const content = extractFullPart(entry, part, index);
+	const model = getModel(await requireLocated(id));
+	const entry = model?.entry(parsed.entryId);
+	if (!entry) throw new HttpError(404, `No entry ${parsed.entryId} in session ${id}`, "entry_not_found");
+
+	const content = extractFullPart(entry, parsed.part, parsed.index);
 	if (content === undefined) {
-		throw new HttpError(404, `Entry ${entryId} has no ${part} part at index ${index ?? "-"}`, "part_not_found");
+		throw new HttpError(404, `Nothing at ${ref}`, "part_not_found");
 	}
 	return { content };
 }

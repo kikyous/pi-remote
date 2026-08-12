@@ -56,34 +56,55 @@
 
 ## 三个设计约束
 
-### 每会话一个 store，靠 epoch 防串台
+### 每会话一个 store，切换不串台
 
 没有全局的「当前会话」对象。`AppRepository.storeFor(id)` 给每个会话一个 `SessionStore`
-（LRU 保 5 个），切换只是让 UI 订阅另一个 flow。每次 `refresh()` 递增 `epoch`，在途响应回来
-时 epoch 对不上就丢弃。`App.kt` 里再用 `key(sessionId)` 强制重建 composition。
+（LRU 保 5 个），切换只是让 UI 订阅另一个 flow。推送自带 `sessionId`，路由不看当前哪个屏幕在前台，
+所以后台会话照样保持正确。`App.kt` 里再用 `key(sessionId)` 强制重建 composition。
+
+原先还有一个 `epoch` 计数器：`refresh()` 走 HTTP 拉 detail + 首页，在途响应回来时对不上 epoch 就
+丢弃。现在 `refresh()` 只是重订阅，权威快照从 `hello` 来，唯一还在飞的请求是翻页——它自己核对
+`oldest` 游标有没有被新快照换掉就够了。
 
 实测：在 984 条的长会话和 6 条的短会话之间 400ms 间隔切换 20 次，内容零串台。
 
 ### 反向列表 + 尾部优先分页
 
-`LazyColumn(reverseLayout = true)`，数据传 `items.asReversed()`（store 保持旧→新，index 0 =
+`LazyColumn(reverseLayout = true)`，数据传分组后再 `asReversed()`（store 保持旧→新，index 0 =
 最新 = 视觉底部）。**底部锚定让 stick/滚动补偿机制整个删掉了**：新消息 prepend 到 index 0
 自动可见、翻历史时不打扰、流式向上生长、首屏就是最新消息，全部零代码。
 展开中间卡片靠 `MaxExpandableHeight = 400.dp` 限高 + 卡片内部滚动（`MessageView.kt`）
-控制布局位移，不再需要锚点补偿。首屏只取尾部 50 条，滚到顶部（reverseLayout 下=最高
-index 端，分页触发看 `lastVisible`）用 `oldestId` 作游标续拉。
-`SessionStore.MAX_ITEMS = 400` 是内存上限。
+控制布局位移，不再需要锚点补偿。首屏 50 条随 `hello` 到，滚到顶部（reverseLayout 下=最高
+index 端，分页触发看 `lastVisible`）用 `ChatState.oldest` 作游标续拉。
+`MAX_ITEMS = 400`（`ChatState.kt`）是内存上限。
 
 实测：打开 2.7MB / 984 条的会话，Java heap 稳定在 12–14MB。
 
-### JSON 取值一律用安全转换
+### 一套模型、一套渲染器，一个纯函数 reducer
 
-`kotlinx.serialization` 的 `jsonPrimitive` 扩展在遇到对象或数组时**抛异常**，不是返回 null。
-`content` 字段既可能是字符串也可能是数组，直接 `.jsonPrimitive` 会当场崩。全部走
-`(this[key] as? JsonPrimitive)?.contentOrNull`，见 `ChatItem.kt` 底部的 `str/int/bool`。
+服务端推的是 **item**（`net/Protocol.kt` 的 `Item` 密封类），不是 pi 的原始 entry，也不是 SDK
+事件。流式中的消息就是 `Item.Assistant(pending = true)`，所以**没有第二套模型**。
 
-同理，entry 保持 `JsonObject` 而非解析成封闭类层次——pi 以后加新 entry 类型时，未知类型应该
-被跳过，而不是让整屏崩掉。
+早先是两套：`StreamingState` 管流式 + `ChatItem` 管落定，`StreamingBubble` 和
+`AssistantBlock`/`ThinkingCard`/`ToolCallRow` 两套渲染器手工保持一致。还有一个 33ms 的 delta 泵
+（服务端每个 token 发一帧，客户端得自己攒），以及「相位路由靠每次 flush 保证」这个不变量。全删了
+——服务端现在按 80ms/4KB 攒批，`live/coalesce.ts`。
+
+**`ChatState.reduce(push)` 是纯函数**，不碰协程也不碰 client。「客户端会不会收敛到服务端的状态」
+因此就是折叠一串 push，`ChatStateTest` 能穷举：重复的 `add`（`hello` 拼装期间在途的推送会造成）、
+指向未知 id 的 patch、任意后缀重放、只带 `more` 不带 `s` 的文本 patch。
+
+**`add` 是 upsert，这条是承重的，不是防御性的。** 断线重连时服务端不重放错过的推送（一篇 2000 字
+回答要流一千多个），而是把变化过的 item 整条重发——一条 `add` 就把它身上发生过的一切折叠掉。改成
+「已存在就忽略」会让补齐静默失效。
+
+**封闭密封类是安全的**，因为 item 的形态由服务端决定：`items.ts` 把每种 pi entry 映射成四种 item
+之一，没有对话内容的直接跳过。pi 以后加的 entry 类型到不了客户端，也就崩不了屏——兼容负担挪到了
+唯一扛得住的地方。版本错配改由 `/ping` 的 `protocol` 在保存连接前拦住（`WIRE_PROTOCOL`）。
+
+`RealPushStreamTest` 回放一份**从真机服务端抓下来的推流**（`app/src/test/resources/pushes.jsonl`）。
+`protocol.ts` 和 `Protocol.kt` 是手工镜像的，改了 wire 形状要用 `server/test/capture.mjs` 重抓，
+否则一个改名字段两边都能编译，只会表现为「某些帧被静默丢掉」。
 
 ## 扫码连接（CameraX + ML Kit，全 Compose）
 
@@ -98,10 +119,19 @@ index 端，分页触发看 `lastVisible`）用 `oldestId` 作游标续拉。
 
 ## 与服务端的约定
 
-`net/Protocol.kt` 镜像 `server/src/protocol.ts`，改动要两边一起改。
+`net/Protocol.kt` 镜像 `server/src/protocol.ts`，改动要两边一起改，并 bump `WIRE_PROTOCOL` /
+`PROTOCOL`。
 
-被服务端截断的内容带 `{truncated, part, index, fullLength}`，点「展开全部」走
-`/entries/{id}/full` 取原文。图片一律只传占位（原图最大实测 361KB）。
+**开一个会话不发 HTTP。** `hello` 一帧就带来首屏 items、会话设置和状态；`GET /sessions/:id` 不存在。
+只有往前翻页（`/items?before=`）和取原文（`/full?ref=`）走 HTTP。写接口（改模型、改名、生成标题）
+直接返回新的 detail，所以也不跟 GET。
 
-**loading 状态不能只依赖 `agent_settled`**：扩展命令（`/xxx`）不产生生命周期事件，只会发出
-handler 自己的消息。详见服务端 `AGENTS.md`。
+被截断的内容带 `{s, more:{ref, bytes}}`，**ref 对客户端不透明**——原样回传给 `/full?ref=` 即可。
+长文本、工具参数、thinking、图片字节全走这一个机制，不再有 `part`/`index` 要镜像。
+
+**忙碌状态看 `status.running`，不要从别处推断。** 服务端从 `session.isStreaming` 的变化推出并推送。
+扩展命令（`/xxx`）从不把它置真，所以旧代码里那条「不能只等 `agent_settled`」的启发式没了。
+
+**工具调用是独立的顶层 item**，紧跟在调用它的 assistant 消息之后。`ChatScreen.groupRows()` 按相邻
+关系把它们折到一起——这是纯渲染决定。客户端不再做调用↔结果的配对（原先的 `linkToolResults` 要在
+整个已加载列表上反复重连，才能处理调用和结果分在不同页的情况）。
