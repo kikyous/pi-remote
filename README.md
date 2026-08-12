@@ -33,12 +33,21 @@ A native **Android app (Kotlin + Jetpack Compose)** that talks to a featherweigh
 
 ## 🚀 Quick Start
 
-### 1 · PC server (one command)
+### 1 · PC server (one command, npx)
+
+**Recommended** — no clone, no build, run straight from npm (requires Node ≥ 22.19):
+
+```bash
+npx pi-remote-bridge       # listens on 0.0.0.0:30150
+```
+
+
+**From source** (for development or a local fork):
 
 ```bash
 cd server
 npm install
-npm start        # listens on 0.0.0.0:30150
+npm start
 ```
 
 First launch prints the connection info and auto-generates a token, along with a **QR code** to pair the phone in one scan:
