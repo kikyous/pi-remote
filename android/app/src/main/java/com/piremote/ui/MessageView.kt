@@ -443,9 +443,9 @@ private fun ToolRowCard(
         borderColor = borderColor,
         bgColor = if (error) ToolErrBg else ToolOkBg,
         modifier = modifier,
-        // A running tool opens itself so its output is visible as it arrives, and
-        // breathes so it reads as alive without a spinner.
-        startsOpen = tool.running,
+        // A running tool breathes so it reads as alive without a spinner. It does
+        // not open itself: every card starts collapsed, so the conversation stays
+        // scannable and nothing shifts under the reader when a tool starts.
         breathing = tool.running,
     ) {
         val diff = tool.diff
@@ -574,10 +574,12 @@ internal fun CardShell(
 
 /**
  * pi-web tool-call card: tinted border/background, mono tool name, argument
- * preview and a rotating chevron. Shared by settled tool calls, bash
- * executions and the live streaming card, so a running call looks identical
- * to the card it becomes. [startsOpen] lets the streaming card surface live
- * output by default; settled cards collapse.
+ * preview and a rotating chevron. Serves every shape a tool takes — a call, a
+ * bash execution, a running call — so one looks exactly like the card it becomes.
+ *
+ * **Always starts collapsed**, running or not. The header alone says what happened
+ * (tool, path or command, green or red), and a card that opened itself would push
+ * whatever the reader was looking at down the screen mid-turn.
  *
  * Open/closed is saveable so it survives the card scrolling out of the list.
  * Siblings are told apart by position, so a caller rendering several of these
@@ -591,11 +593,10 @@ internal fun ToolCallCard(
     bgColor: Color,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
-    startsOpen: Boolean = false,
     breathing: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-    var open by rememberSaveable { mutableStateOf(startsOpen) }
+    var open by rememberSaveable { mutableStateOf(false) }
     val rotation by animateFloatAsState(if (open) 180f else 0f, label = "tool-card-chevron")
     // A streaming card's subtitle is stable while its output grows; shortening
     // it once per value keeps the allocation off the recomposition path.
