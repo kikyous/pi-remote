@@ -53,7 +53,7 @@ npm start
 First launch prints the connection info and auto-generates a token, along with a **QR code** to pair the phone in one scan:
 
 ```
-pi-remote-bridge 0.1.0
+pi-remote-bridge 0.3.0
   URL:   http://192.168.31.117:30150
   Token: 85Ou5U44v-lN0BckrE6QJ5OuMgBAekZQ
   Listening on all interfaces — only use this on a trusted network.
@@ -93,7 +93,7 @@ Two workflows live in `.github/workflows/`:
 
 - npm publishing needs an **`NPM_TOKEN`** repository secret (npm access token).
 - Signed APK releases need four repository secrets: **`KEYSTORE_BASE64`** (the keystore file, base64-encoded), **`KEYSTORE_PASSWORD`**, **`KEY_ALIAS`**, **`KEY_PASSWORD`**. Without them the workflow still runs but ships the debug APK instead.
-- Tag `v0.2.0` → publishes `pi-remote-bridge@0.2.0` and a release with the APK attached.
+- Tag `v0.3.0` → publishes `pi-remote-bridge@0.3.0` and a release with the APK attached.
 
 ---
 

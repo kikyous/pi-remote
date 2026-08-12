@@ -20,7 +20,7 @@ import { setLiveSource } from "./sessions/model.ts";
 import { getDetail, getFullByRef, getItemPage, listProjects, listSessions, setLiveStateProbe, setRunningProbe } from "./store.ts";
 import { attachWebSocket } from "./ws.ts";
 
-const VERSION = "0.1.0";
+const VERSION = "0.3.0";
 
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
