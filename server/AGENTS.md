@@ -201,6 +201,19 @@ item 列表必须描述同一个瞬间。中间夹一个 await，那期间落盘
 等快照发完再按 `seq > 快照序号` 释放。不攒的话，一个跟订阅赛跑的 prompt 会让 user 消息既被快照
 的 flush 发出去、又包含在快照里，界面上出现两条——实测踩到过。
 
+### getContextUsage() 不能每个事件都调
+
+它内部是 `getBranch()` + `estimateContextTokens(整条分支的 messages)`，实测 1460 条 entry 的会话
+上 **1.96ms/次**。第一版在 `handle()` 末尾对**每个** SDK 事件调 `syncStatus()`，而 delta 也是事件
+——一个长回合 8000 个 delta = **15.6 秒纯 CPU**，全压在事件处理路径上、挡在每次 flush 前面。
+`sameStatus` 只去重了「要不要发」，没去重「要不要算」。
+
+所以 `StatusProbe` 拆成两半：`running()` 是字段读（`_isAgentRunActive`），每个事件都读；
+`context()` 只在 `entry_appended` / `agent_settled` / `compaction_end` 时读——delta 改不了已落盘的
+上下文。`snapshotPoint()` 也读一次，因为新订阅者要把上下文条填上。
+
+`translate.test.ts` 里钉了一条：整份 trace（100+ 个 delta）只允许 1 次 estimate。
+
 ### 断线补齐是「重发整条 item」，不是重放错过的推送
 
 `LiveAgent.touched` 是 `itemId → 它最后一次变化时的 seq`。重连时 `catchUpIds()` 挑出
@@ -220,6 +233,16 @@ item 列表必须描述同一个瞬间。中间夹一个 await，那期间落盘
 
 **有 id 解析不出来就退回快照。** 那意味着这条 item 已经不在活跃分支上，或者是上一世 agent 铸的
 `live-N`。宁可发一次快照，也不能让客户端悄悄留着服务端已经没有的东西。
+
+**但铸造 id 必须先解析，不能直接当解析不出来。** 流式消息以 `live-N` 加进客户端，客户端就一直用
+这个 key；落盘后服务端列表里是真实 entry id。不做映射的话，「断线在回合中、重连在回合后」这个最
+常见的场景每次都会退化成全量快照。`Translator.resolve()` 提供 `live-N → entry id`，而重发时**盖回
+客户端认识的那个 id**——否则同一条消息在客户端会存两份（一份过期、一份新的）。也不能简单跳过
+`live-N`：客户端手里那份是流式中途的快照，缺 usage、还标着 pending，跳过就永远停在转圈状态。
+
+安全性来自时序：只有收到过原始 `add live-N` 的客户端才可能让它变 stale。回合结束后才订阅的客户端
+拿到的是 `hello`（里面是 entry id），而 `hello` 的序号已经晚于落定，所以 `live-N` 不会进它的补齐集合。
+`e2e2.mjs` 的 F 项就是抓这个的——把 `resolve` 改回恒等，三条断言全红。
 
 ### 游标超前于 agent 时要重发快照
 

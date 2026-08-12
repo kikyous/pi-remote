@@ -237,5 +237,57 @@ console.log("\nE. 外部进程改动会话文件后自动重载");
   check("外部 entry 仍在活跃分支上", ids.has("ext00001"), `共 ${final.items.length} 条`);
 }
 
+// ------------------------------------------------ 回合结束后才重连（幽灵 id）
+console.log("\nF. 断线在回合中、重连在回合后");
+{
+  const { id } = await must("/sessions", { method: "POST", body: JSON.stringify({ cwd: CWD }) });
+
+  const before = [];
+  const ws1 = await connect((m) => { if (m.t === "add" || m.t === "patch" || m.t === "status") before.push(m); });
+  sub(ws1, id);
+  await new Promise((r) => setTimeout(r, 200));
+  await must(`/sessions/${id}/prompt`, { method: "POST", body: JSON.stringify({ message: "数到十，每个数字一行" }) });
+
+  // 断在流式当中：此时那条消息还挂在铸造出来的 live-N 上。
+  await new Promise((r) => {
+    const t = setInterval(() => {
+      if (before.some((m) => m.t === "add" && m.item.pending) && before.length >= 4) { clearInterval(t); r(); }
+    }, 20);
+    setTimeout(() => { clearInterval(t); r(); }, 90_000);
+  });
+  const cutoffSeq = before.at(-1)?.seq ?? 0;
+  const liveIds = before.filter((m) => m.t === "add" && m.item.id.startsWith("live-")).map((m) => m.item.id);
+  ws1.terminate();
+  console.log(`     断开于 seq=${cutoffSeq}，手里的铸造 id: ${liveIds.join(",") || "无"}`);
+
+  // 等回合彻底结束——这样 live-N 已经落盘成真实 entry id，服务端列表里再也没有它。
+  await new Promise((r) => setTimeout(r, 15_000));
+
+  const after = [];
+  let helloed = false;
+  const ws2 = await connect((m) => {
+    if (m.t === "hello") { helloed = true; return; }
+    if (m.t === "add" || m.t === "patch" || m.t === "status") after.push(m);
+  });
+  sub(ws2, id, cutoffSeq);
+  await new Promise((r) => setTimeout(r, 2500));
+  ws2.close();
+
+  check("落定后重连仍走增量", helloed === false, `hello=${helloed}`);
+
+  // 关键：重发回来的必须还用客户端认识的那个 live-N，否则同一条消息会存两份。
+  const resentIds = after.filter((m) => m.t === "add").map((m) => m.item.id);
+  const kept = liveIds.every((lid) => resentIds.includes(lid));
+  check("按客户端认识的 id 重发", liveIds.length === 0 || kept, `重发 ${resentIds.join(",") || "无"}`);
+
+  // 而且那条消息必须已落定——不然界面会永远停在 pending。
+  const settled = after.filter((m) => m.t === "add" && liveIds.includes(m.item.id));
+  check(
+    "重发回来的消息已落定",
+    settled.length > 0 && settled.every((m) => !m.item.pending),
+    settled.map((m) => `${m.item.id}:pending=${m.item.pending ?? false}`).join(" ") || "没有重发",
+  );
+}
+
 console.log(failures === 0 ? "\n全部通过 ✓" : `\n${failures} 项失败 ✗`);
 process.exit(failures === 0 ? 0 : 1);

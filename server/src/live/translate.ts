@@ -25,10 +25,19 @@ export type Mutation =
 	| { t: "patch"; id: string; append?: { f: "text" | "thinking" | "output"; s: string }; set?: ItemPatch }
 	| { t: "status"; status: SessionStatus };
 
-/** What the translator cannot know by itself, supplied by the pool. */
+/**
+ * What the translator cannot know by itself, supplied by the pool.
+ *
+ * Split in two because the halves cost wildly different amounts. `running` is a
+ * field read. `context` walks the whole branch and re-estimates every message —
+ * measured at **1.96ms** on a 1460-entry session, which at one call per SDK event
+ * came to **15.6 seconds of CPU for a single long turn**, on the event path, ahead
+ * of every flush. Deltas cannot change stored context anyway, so it is only read
+ * when something has actually landed.
+ */
 export interface StatusProbe {
-	running: boolean;
-	context?: ContextUsageDto;
+	running(): boolean;
+	context(): ContextUsageDto | undefined;
 }
 
 export interface Translator {
@@ -37,7 +46,16 @@ export interface Translator {
 	tail(): Item | undefined;
 	status(): SessionStatus;
 	/** Re-read the probe and emit a status push if anything moved. */
-	syncStatus(): void;
+	syncStatus(withContext?: boolean): void;
+	/**
+	 * The id the server's item list uses for an id the client may still hold.
+	 *
+	 * A streaming message is added under a minted `live-N` and keeps that id on the
+	 * client for good, while the settled entry has an id of its own. Without this,
+	 * catching a client up on that message would look like an id that resolves to
+	 * nothing.
+	 */
+	resolve(id: string): string;
 }
 
 interface Streaming {
@@ -49,7 +67,7 @@ interface Streaming {
 	at: string;
 }
 
-export function createTranslator(emit: (m: Mutation) => void, probe: () => StatusProbe): Translator {
+export function createTranslator(emit: (m: Mutation) => void, probe: StatusProbe): Translator {
 	let minted = 0;
 	let streaming: Streaming | undefined;
 	/** toolCallId → the id of the row that call created, so results can patch it. */
@@ -58,15 +76,23 @@ export function createTranslator(emit: (m: Mutation) => void, probe: () => Statu
 	const streamed = new Map<string, string>();
 	/** Calls whose live tail hit [LIVE_OUTPUT_LIMIT], so the client needs the handle. */
 	const capped = new Set<string>();
+	/** Minted id → the id of the entry that message became. See [Translator.resolve]. */
+	const settledAs = new Map<string, string>();
 	let status: SessionStatus = { running: false, queued: [], compacting: false };
 
-	function syncStatus(): void {
-		const now = probe();
+	/**
+	 * Re-read the probe and emit if anything moved.
+	 *
+	 * @param withContext Re-estimate context usage. Only worth it when an entry
+	 *   landed or a run settled; see [StatusProbe].
+	 */
+	function syncStatus(withContext = false): void {
+		const context = withContext ? probe.context() : status.context;
 		const next: SessionStatus = {
-			running: now.running,
+			running: probe.running(),
 			queued: status.queued,
 			compacting: status.compacting,
-			...(now.context ? { context: now.context } : {}),
+			...(context ? { context } : {}),
 		};
 		if (sameStatus(status, next)) return;
 		status = next;
@@ -209,7 +235,11 @@ export function createTranslator(emit: (m: Mutation) => void, probe: () => Statu
 		// Running-ness is read from the session itself rather than inferred from
 		// agent_start/agent_settled. An extension command (`/askme`) emits neither,
 		// which is exactly why the old client could be left spinning forever.
-		syncStatus();
+		//
+		// Context usage is only re-estimated when an entry actually landed or a run
+		// finished — the two things that move it. Doing it per event, deltas
+		// included, cost 15.6s of CPU on a long turn. See [StatusProbe].
+		syncStatus(e.type === "entry_appended" || e.type === "agent_settled" || e.type === "compaction_end");
 	}
 
 	/**
@@ -264,6 +294,7 @@ export function createTranslator(emit: (m: Mutation) => void, probe: () => Statu
 			if (first.usage) set.usage = first.usage;
 			if (first.error) set.error = first.error;
 			emit({ t: "patch", id: streaming.id, set });
+			settledAs.set(streaming.id, first.id);
 
 			// The calls this message made are new rows.
 			for (const item of items.slice(1)) {
@@ -293,7 +324,7 @@ export function createTranslator(emit: (m: Mutation) => void, probe: () => Statu
 		return item;
 	}
 
-	return { handle, tail, status: () => status, syncStatus };
+	return { handle, tail, status: () => status, syncStatus, resolve: (id) => settledAs.get(id) ?? id };
 }
 
 /**

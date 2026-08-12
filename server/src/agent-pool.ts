@@ -188,13 +188,10 @@ function attach(session: AgentSession, sessionId: string, path: string): LiveAge
 		const current = agents.get(sessionId);
 		if (current) publish(current, mutation);
 	});
-	const translator = createTranslator(
-		(mutation) => coalescer.push(mutation),
-		() => {
-			const context = session.getContextUsage();
-			return { running: session.isStreaming, ...(context ? { context } : {}) };
-		},
-	);
+	const translator = createTranslator((mutation) => coalescer.push(mutation), {
+		running: () => session.isStreaming,
+		context: () => session.getContextUsage(),
+	});
 
 	const live: LiveAgent = {
 		session,
@@ -399,7 +396,9 @@ function publish(live: LiveAgent, mutation: Mutation): void {
  */
 export function snapshotPoint(live: LiveAgent): { seq: number; tail: Item | undefined; status: SessionStatus } {
 	live.coalescer.flush();
-	live.translator.syncStatus();
+	// A subscriber wants the context bar filled, so this is one of the few places
+	// worth paying for the estimate.
+	live.translator.syncStatus(true);
 	live.coalescer.flush();
 	return { seq: live.seq, tail: live.translator.tail(), status: live.translator.status() };
 }

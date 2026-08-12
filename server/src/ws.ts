@@ -238,6 +238,18 @@ async function sendCatchUp(conn: Connection, sessionId: string, stale: Set<strin
 	const point = snapshotPoint(live);
 	const items = itemPageOf(located, undefined, CATCH_UP_SCAN).items;
 
+	// A message the client watched stream is held under the `live-N` it was added
+	// as, while the stored entry has an id of its own. Resolve to the id our list
+	// uses, but send it back stamped with the one the client knows — otherwise it
+	// would hold the same message twice, once stale and once fresh.
+	//
+	// Only a client that received the original `add live-N` can have it stale: a
+	// client that subscribed after the message settled got the entry id in a
+	// `hello`, whose sequence is already past the settle, so `live-N` is not in its
+	// catch-up set.
+	const wanted = new Map<string, string>();
+	for (const id of stale) wanted.set(live.translator.resolve(id), id);
+
 	// In list order, so the client never inserts a newer item before an older one.
 	//
 	// Every frame carries the *same* sequence — the snapshot's — because that is
@@ -245,15 +257,16 @@ async function sendCatchUp(conn: Connection, sessionId: string, stale: Set<strin
 	// reconstruction, not a replay, so `live.seq` is deliberately not advanced.
 	let sent = 0;
 	for (const item of [...items, ...(point.tail ? [point.tail] : [])]) {
-		if (!stale.has(item.id)) continue;
-		send(conn.socket, { t: "add", sessionId, seq: point.seq, item });
+		const asKnown = wanted.get(item.id);
+		if (asKnown === undefined) continue;
+		send(conn.socket, { t: "add", sessionId, seq: point.seq, item: asKnown === item.id ? item : { ...item, id: asKnown } });
 		sent++;
 	}
-	// An id we cannot resolve is one whose item left the active branch, or one
-	// minted by a previous incarnation of the agent. Falling back to a snapshot
+	// An id that resolves to nothing is one whose item left the active branch, or
+	// one minted by a previous incarnation of the agent. Falling back to a snapshot
 	// keeps the client from quietly holding something the server no longer has.
-	if (sent < stale.size) {
-		console.log(`[ws] catch-up incomplete for ${sessionId} (${sent}/${stale.size}) — snapshotting`);
+	if (sent < wanted.size) {
+		console.log(`[ws] catch-up incomplete for ${sessionId} (${sent}/${wanted.size}) — snapshotting`);
 		return sendHello(conn, sessionId);
 	}
 

@@ -256,6 +256,49 @@ class ChatStateTest {
     }
 
     @Test
+    fun `trimming re-anchors the paging cursor on what survived`() {
+        // Left pointing at a dropped item, the next page would be fetched before a
+        // message that is no longer in the list and stitched onto the survivors,
+        // silently losing everything between the two — and a snapshot only carries
+        // the newest 50 items, so scrolling back would never bring it back.
+        val loaded = Push.Hello(
+            sessionId = "s1",
+            seq = 1,
+            items = (1..MAX_ITEMS).map { Item.User(id = "e$it", at = "t", text = TextDto("m$it")) },
+            hasMore = true,
+            oldest = "e1",
+            detail = detail,
+        )
+        val full = ChatState().reduce(loaded)
+        assertEquals("e1", full.oldest)
+
+        val after = full.reduce(add(Item.User(id = "new", at = "t", text = TextDto("newest"))))
+
+        assertEquals(MAX_ITEMS, after.items.size)
+        assertEquals("e1 was dropped", "e2", after.items.first().id)
+        assertEquals("the cursor follows the window", "e2", after.oldest)
+        assertTrue("there is history before the window again", after.hasMore)
+    }
+
+    @Test
+    fun `trimming a fully loaded session reopens paging`() {
+        // hasMore was false — the very start of the session was resident — and then
+        // trimming pushed it out again.
+        val loaded = Push.Hello(
+            sessionId = "s1",
+            seq = 1,
+            items = (1..MAX_ITEMS).map { Item.User(id = "e$it", at = "t", text = TextDto("m$it")) },
+            hasMore = false,
+            oldest = null,
+            detail = detail,
+        )
+        val after = ChatState().reduce(loaded).reduce(add(Item.User(id = "new", at = "t", text = TextDto("newest"))))
+
+        assertTrue(after.hasMore)
+        assertEquals("e2", after.oldest)
+    }
+
+    @Test
     fun `the completion notification reads the last assistant text`() {
         val state = fold(
             add(Item.User(id = "e1", at = "t", text = TextDto("q"))),

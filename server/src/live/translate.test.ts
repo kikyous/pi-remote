@@ -81,7 +81,7 @@ function replayTrace(): { mutations: Mutation[]; frames: string[] } {
 	});
 
 	let running = false;
-	const translator = createTranslator((m) => coalescer.push(m), () => ({ running }));
+	const translator = createTranslator((m) => coalescer.push(m), { running: () => running, context: () => undefined });
 
 	let entryId = 0;
 	for (const event of events) {
@@ -181,10 +181,68 @@ test("status follows the run rather than lifecycle events", () => {
 	}
 });
 
+test("context usage is not re-estimated per delta", () => {
+	// It walks the whole branch and re-estimates every message: 1.96ms on a
+	// 1460-entry session. Called once per SDK event — deltas included — that came to
+	// 15.6 seconds of CPU for one long turn, sitting on the event path.
+	const events = readFileSync(TRACE, "utf8")
+		.split("\n")
+		.filter((line) => line.trim().length > 0)
+		.map((line) => JSON.parse(line) as Record<string, unknown>);
+
+	let contextCalls = 0;
+	const coalescer = createCoalescer(() => {});
+	const translator = createTranslator((m) => coalescer.push(m), {
+		running: () => true,
+		context: () => {
+			contextCalls++;
+			return undefined;
+		},
+	});
+
+	let deltas = 0;
+	for (const event of events) {
+		if (event.type === "session") continue;
+		if (event.type === "message_update") deltas++;
+		translator.handle(event as unknown as AgentSessionEvent);
+	}
+
+	// The bound that matters: the expensive read scales with things that actually
+	// land, not with how much text streamed. This capture has one `agent_settled`
+	// and no appended entry, so one call.
+	assert.ok(deltas > 100, `the capture has enough deltas to be meaningful: ${deltas}`);
+	assert.equal(contextCalls, 1, `${deltas} deltas cost ${contextCalls} estimate(s)`);
+});
+
+test("context usage is re-estimated when an entry lands", () => {
+	let contextCalls = 0;
+	const coalescer = createCoalescer(() => {});
+	const translator = createTranslator((m) => coalescer.push(m), {
+		running: () => true,
+		context: () => {
+			contextCalls++;
+			return { tokens: 10, contextWindow: 100, percent: 10 };
+		},
+	});
+
+	translator.handle({
+		type: "entry_appended",
+		entry: {
+			type: "message",
+			id: "e1",
+			parentId: null,
+			timestamp: "2026-08-12T10:00:00.000Z",
+			message: { role: "user", content: "hi" },
+		},
+	} as unknown as AgentSessionEvent);
+
+	assert.equal(contextCalls, 1, "an append moves it, so it is worth the walk");
+});
+
 test("a cumulative tool output is sent as appends, not resent whole", () => {
 	const mutations: Mutation[] = [];
 	const coalescer = createCoalescer((m) => mutations.push(m));
-	const translator = createTranslator((m) => coalescer.push(m), () => ({ running: true }));
+	const translator = createTranslator((m) => coalescer.push(m), { running: () => true, context: () => undefined });
 
 	// The call has to exist before its output can be patched.
 	translator.handle({
@@ -220,7 +278,7 @@ test("a cumulative tool output is sent as appends, not resent whole", () => {
 test("a tool that rewrites its output replaces instead of appending", () => {
 	const mutations: Mutation[] = [];
 	const coalescer = createCoalescer((m) => mutations.push(m));
-	const translator = createTranslator((m) => coalescer.push(m), () => ({ running: true }));
+	const translator = createTranslator((m) => coalescer.push(m), { running: () => true, context: () => undefined });
 
 	translator.handle({
 		type: "entry_appended",

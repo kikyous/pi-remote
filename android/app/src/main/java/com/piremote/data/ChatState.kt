@@ -79,8 +79,8 @@ fun ChatState.reduce(push: Push): ChatState = when (push) {
 
     is Push.Add -> {
         val at = items.indexOfFirst { it.id == push.item.id }
-        if (at == -1) copy(items = trim(items + push.item))
-        else copy(items = items.toMutableList().also { it[at] = push.item })
+        if (at != -1) copy(items = items.toMutableList().also { it[at] = push.item })
+        else appended(push.item)
     }
 
     is Push.Patch -> {
@@ -95,9 +95,25 @@ fun ChatState.reduce(push: Push): ChatState = when (push) {
     is Push.Unsubscribed, Push.Pong -> this
 }
 
-/** Drop the oldest items once the list grows past what a phone should hold. */
-private fun trim(items: List<Item>): List<Item> =
-    if (items.size <= MAX_ITEMS) items else items.takeLast(MAX_ITEMS)
+/**
+ * Append an item, dropping the oldest ones once the list grows past what a phone
+ * should hold.
+ *
+ * Trimming has to move the paging cursor with it. [oldest] names the item the next
+ * page is fetched *before*, so leaving it pointing at something that was just
+ * dropped tears a hole in the history: `loadOlder()` would fetch the page before a
+ * message that is no longer resident and stitch it straight onto the survivors,
+ * losing everything in between until a full resync — and a snapshot only carries
+ * the newest 50 items, so scrolling back would never recover it.
+ */
+private fun ChatState.appended(item: Item): ChatState {
+    val grown = items + item
+    if (grown.size <= MAX_ITEMS) return copy(items = grown)
+    val kept = grown.takeLast(MAX_ITEMS)
+    // Something was dropped, so there is definitely history before `kept` now —
+    // even if we had previously loaded all the way to the start.
+    return copy(items = kept, oldest = kept.first().id, hasMore = true)
+}
 
 private fun Item.patched(push: Push.Patch): Item {
     val appended = push.append?.let { append ->
