@@ -240,7 +240,7 @@ function printBanner(port: number, host: string, token: string): void {
 	// QR pairing: the phone scans this code from the PC screen and the app
 	// fills address + token by itself, no typing required.
 	void renderConnectQr(buildConnectPayload(url, token)).then((qr) => {
-		console.log("\n  Scan with Pi Remote (app → 扫码连接):");
+		console.log("\n  Scan with Pi Remote (app → Scan to connect):");
 		console.log(qr);
 	});
 }

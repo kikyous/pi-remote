@@ -216,7 +216,7 @@ export async function generateSessionTitle(sessionId: string): Promise<{ title: 
 	await withDeadline(
 		parent.waitForIdle(),
 		TITLE_IDLE_WAIT_MS,
-		new HttpError(409, "会话正在运行，请稍后再试", "session_busy"),
+		new HttpError(409, "Session is running, please try again later", "session_busy"),
 	);
 
 	// Drop tool calls without a following result (and their orphan results): a
@@ -224,7 +224,7 @@ export async function generateSessionTitle(sessionId: string): Promise<{ title: 
 	const paired = pairToolResults(parent.state.messages);
 	const originalCount = paired.length;
 	if (!paired.some((m) => m.role === "user")) {
-		throw new HttpError(400, "会话还没有用户消息", "empty_session");
+		throw new HttpError(400, "Session has no user messages yet", "empty_session");
 	}
 
 	// Like pi-web: when the turn ended on a user message, append the rule to it
@@ -280,7 +280,7 @@ export async function generateSessionTitle(sessionId: string): Promise<{ title: 
 			new Promise<never>((_, reject) => {
 				timer = setTimeout(() => {
 					titleAgent.abort();
-					reject(new HttpError(504, "标题生成超时", "title_timeout"));
+					reject(new HttpError(504, "Title generation timed out", "title_timeout"));
 			}, TITLE_TIMEOUT_MS);
 			}),
 		]);
@@ -299,7 +299,7 @@ export async function generateSessionTitle(sessionId: string): Promise<{ title: 
 		if (!m || m.role !== "assistant") continue;
 		const assistant = m as { stopReason?: string; errorMessage?: string; content: Array<{ type?: string; text?: string }> };
 		if (assistant.stopReason === "error") {
-			throw new HttpError(502, assistant.errorMessage || "标题模型请求失败", "title_model_error");
+			throw new HttpError(502, assistant.errorMessage || "Title model request failed", "title_model_error");
 		}
 		const text = assistant.content
 			.filter((b) => b.type === "text")
@@ -312,7 +312,7 @@ export async function generateSessionTitle(sessionId: string): Promise<{ title: 
 			return { title };
 		}
 	}
-	throw new HttpError(502, "模型没有返回会话标题", "no_title");
+	throw new HttpError(502, "Model returned no session title", "no_title");
 }
 
 /**
@@ -384,7 +384,7 @@ function cleanTitle(raw: string): string {
 	}
 	t = t.replace(/\s+/g, " ").trim().replace(/[。.!：:，,、；;？?]+$/u, "").trim();
 	if (!/[\p{L}\p{N}]/u.test(t)) {
-		throw new HttpError(502, "模型没有返回可用标题", "bad_title");
+		throw new HttpError(502, "Model returned no usable title", "bad_title");
 	}
 	const chars = Array.from(t);
 	if (chars.length > 80) t = chars.slice(0, 80).join("").trim();
