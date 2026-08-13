@@ -10,6 +10,7 @@ Android app can browse sessions and chat with the agent from a phone on the same
 npm install -g pi-remote-bridge
 pi-remote-bridge          # listens on 0.0.0.0:30150, prints a pairing QR code
 pi-remote-bridge -p 8080  # custom port
+pi-remote-bridge --debug  # log every HTTP request / WebSocket message with the app
 ```
 
 Requires Node.js >= 22.19. The shared auth token lives at `~/.pi/remote/token`

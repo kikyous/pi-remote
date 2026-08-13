@@ -8,6 +8,8 @@ export interface ServerConfig {
 	port: number;
 	host: string;
 	token: string;
+	/** Log every request and WebSocket message exchanged with the app. */
+	debug: boolean;
 }
 
 const DEFAULT_PORT = 30150;
@@ -42,6 +44,7 @@ export function loadOrCreateToken(): string {
 export function parseArgs(argv: string[]): ServerConfig {
 	let port = DEFAULT_PORT;
 	let host = DEFAULT_HOST;
+	let debug = false;
 
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
@@ -55,6 +58,8 @@ export function parseArgs(argv: string[]): ServerConfig {
 			const value = argv[++i];
 			if (!value) throw new Error("--host requires a value");
 			host = value;
+		} else if (arg === "--debug") {
+			debug = true;
 		} else if (arg === "--help" || arg === "-h") {
 			printUsage();
 			process.exit(0);
@@ -63,7 +68,7 @@ export function parseArgs(argv: string[]): ServerConfig {
 		}
 	}
 
-	return { port, host, token: loadOrCreateToken() };
+	return { port, host, token: loadOrCreateToken(), debug };
 }
 
 function printUsage(): void {
@@ -75,6 +80,7 @@ Usage:
 Options:
   --port, -p <port>   Port to listen on (default: ${DEFAULT_PORT})
   --host, -H <host>   Address to bind (default: ${DEFAULT_HOST}, all interfaces)
+  --debug             Log every HTTP request and WebSocket message exchanged with the app
   --help, -h          Show this help
 
 The shared token is stored in ~/.pi/remote/token and printed at startup.`);

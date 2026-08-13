@@ -39,6 +39,7 @@ A native **Android app (Kotlin + Jetpack Compose)** that talks to a featherweigh
 
 ```bash
 npx pi-remote-bridge       # listens on 0.0.0.0:30150
+npx pi-remote-bridge --debug   # log every HTTP request / WebSocket message (troubleshooting)
 ```
 
 

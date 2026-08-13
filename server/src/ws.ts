@@ -13,6 +13,7 @@ import {
 	unsubscribe,
 } from "./agent-pool.ts";
 import { idleStatus } from "./commands.ts";
+import { debugLog, isDebug, redactUrl, truncate } from "./debug.ts";
 import { isAuthorized } from "./http.ts";
 import type { Item, Push, SessionStatus, WsCommand } from "./protocol.ts";
 import { getDetail, itemPageOf, requireLocated } from "./store.ts";
@@ -74,6 +75,7 @@ export function attachWebSocket(server: Server, token: string): WebSocketServer 
 
 	server.on("upgrade", (req, socket, head) => {
 		const url = new URL(req.url ?? "/", "http://localhost");
+		if (isDebug()) debugLog(`← WS upgrade ${redactUrl(url)}`);
 		if (url.pathname !== "/ws") {
 			socket.destroy();
 			return;
@@ -130,6 +132,7 @@ export function attachWebSocket(server: Server, token: string): WebSocketServer 
 }
 
 async function handleCommand(conn: Connection, raw: string): Promise<void> {
+	if (isDebug()) debugLog(`← WS ${truncate(raw)}`);
 	let command: WsCommand;
 	try {
 		command = JSON.parse(raw) as WsCommand;
@@ -349,5 +352,7 @@ function detachAll(conn: Connection): void {
 
 function send(socket: WebSocket, push: Push): void {
 	if (socket.readyState !== WebSocket.OPEN) return;
-	socket.send(JSON.stringify(push));
+	const text = JSON.stringify(push);
+	if (isDebug()) debugLog(`→ WS ${truncate(text)}`);
+	socket.send(text);
 }

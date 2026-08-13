@@ -12,6 +12,7 @@ import {
 	updateSession,
 } from "./commands.ts";
 import { lanAddresses, parseArgs } from "./config.ts";
+import { isDebug, setDebug } from "./debug.ts";
 import { buildConnectPayload, renderConnectQr } from "./qr.ts";
 import { gitCommitDiff, gitCommits, gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
@@ -39,6 +40,7 @@ function main(): void {
 	setRunningProbe(isRunning);
 	setLiveSource(liveTree);
 	setLiveStateProbe(loadedSessionState);
+	setDebug(config.debug);
 
 	const router = new Router();
 
@@ -237,6 +239,7 @@ function printBanner(port: number, host: string, token: string): void {
 		}
 		console.log("  Listening on all interfaces — only use this on a trusted network.");
 	}
+	if (isDebug()) console.log("  Debug: logging every request and WebSocket message.");
 	// QR pairing: the phone scans this code from the PC screen and the app
 	// fills address + token by itself, no typing required.
 	void renderConnectQr(buildConnectPayload(url, token)).then((qr) => {
