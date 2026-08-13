@@ -118,11 +118,27 @@ private fun GitListScreen(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    var branch by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    // One gitStatus fetch feeds both the top-bar branch and the Changes list;
+    // fetching it here (instead of once per composable) halves the work when
+    // the Changes tab opens and keeps the list state across tab switches.
+    var status by remember { mutableStateOf<GitStatusDto?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(cwd) {
-        branch = runCatching { repo.client.gitStatus(cwd) }.getOrNull()?.branch
+    suspend fun loadStatus() {
+        refreshing = true
+        try {
+            status = repo.client.gitStatus(cwd)
+            error = null
+        } catch (e: Exception) {
+            error = e.message ?: context.getString(R.string.git_status_failed)
+        } finally {
+            refreshing = false
+        }
     }
+
+    LaunchedEffect(cwd) { loadStatus() }
 
     Scaffold(
         modifier = modifier,
@@ -136,7 +152,7 @@ private fun GitListScreen(
                 title = {
                     Column {
                         Text(
-                            branch?.takeIf { it.isNotBlank() } ?: "Git",
+                            status?.branch?.takeIf { it.isNotBlank() } ?: "Git",
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -167,7 +183,13 @@ private fun GitListScreen(
                 )
             }
             when (tab) {
-                GitTab.Changes -> ChangesList(repo, cwd, onOpenFile)
+                GitTab.Changes -> ChangesList(
+                    status = status,
+                    error = error,
+                    refreshing = refreshing,
+                    onRefresh = { scope.launch { loadStatus() } },
+                    onOpenFile = onOpenFile,
+                )
                 GitTab.Commits -> CommitsList(repo, cwd, onOpenCommit)
             }
         }
@@ -176,30 +198,16 @@ private fun GitListScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChangesList(repo: AppRepository, cwd: String, onOpenFile: (String) -> Unit) {
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    var status by remember { mutableStateOf<GitStatusDto?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var refreshing by remember { mutableStateOf(false) }
-
-    suspend fun load() {
-        refreshing = true
-        try {
-            status = repo.client.gitStatus(cwd)
-            error = null
-        } catch (e: Exception) {
-            error = e.message ?: context.getString(R.string.git_status_failed)
-        } finally {
-            refreshing = false
-        }
-    }
-
-    LaunchedEffect(cwd) { load() }
-
+private fun ChangesList(
+    status: GitStatusDto?,
+    error: String?,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    onOpenFile: (String) -> Unit,
+) {
     PullToRefreshBox(
         isRefreshing = refreshing,
-        onRefresh = { scope.launch { load() } },
+        onRefresh = onRefresh,
         modifier = Modifier.fillMaxSize(),
     ) {
         when {

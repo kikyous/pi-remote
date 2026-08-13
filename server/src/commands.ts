@@ -1,7 +1,7 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 
-import { acquire, getLoaded, withPromptLock } from "./agent-pool.ts";
+import { acquire, getLoaded, publishAppendedSince, withPromptLock } from "./agent-pool.ts";
 import { HttpError } from "./http.ts";
 import {
 	type ContextUsageDto,
@@ -399,6 +399,9 @@ export async function updateSession(sessionId: string, patch: SessionPatch): Pro
 	// Every one of these mutates the session file, so an agent has to exist
 	// and its in-memory tree must be current.
 	const live = await acquire(sessionId, true);
+	// pi writes model/thinking changes without an SDK event, so they would not
+	// reach the app until the next resync; surface the notices right away.
+	const leafBefore = live.session.sessionManager.getLeafEntry();
 
 	if (patch.provider !== undefined || patch.modelId !== undefined) {
 		if (patch.provider === undefined || patch.modelId === undefined) {
@@ -436,6 +439,7 @@ export async function updateSession(sessionId: string, patch: SessionPatch): Pro
 
 	// No cache to invalidate: each of these appends an entry, which moves the
 	// file's `(mtime, size)` — the key both session caches validate against.
+	publishAppendedSince(live, leafBefore);
 	return { updated };
 }
 

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { resolve, sep } from "node:path";
+import { delimiter, dirname, join, resolve, sep } from "node:path";
 
 import { HttpError } from "./http.ts";
 import type {
@@ -21,9 +22,52 @@ import type {
  * never touched. Paths are still validated to stay inside the repo.
  */
 
+/**
+ * The git the shell would resolve, found once at startup.
+ *
+ * Spawning an absolute path skips the PATH search that execvp/posix_spawn
+ * performs on every spawn: each candidate directory costs ~10ms+ on some
+ * machines, and a long per-tool PATH (asdf, flutter, dotnet, …) added ~200ms
+ * to every git spawn here. A single stat-based scan costs ~1ms and needs no
+ * hardcoded install locations.
+ */
+function resolveGit(): string {
+	const dirs = process.env.PATH?.split(delimiter) ?? [];
+	for (const dir of dirs) {
+		if (!dir) continue;
+		for (const name of ["git", "git.exe"]) {
+			const candidate = join(dir, name);
+			if (existsSync(candidate)) return candidate;
+		}
+	}
+	return "git"; // last resort: let spawn do the PATH search on every call
+}
+
+const GIT_BIN = resolveGit();
+
+// With a resolved absolute binary the child does not need PATH for itself (git
+// finds its helpers via exec-path, and the pager is disabled below); a minimal
+// PATH avoids re-paying the search for anything git does spawn. The unresolved
+// fallback keeps the inherited PATH so the OS can still find "git".
+const GIT_PATH = GIT_BIN === "git" ? process.env.PATH : `${dirname(GIT_BIN)}:/usr/bin:/bin`;
+
 function runGit(cwd: string, args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
-		const child = spawn("git", args, { cwd });
+		const child = spawn(GIT_BIN, args, {
+			cwd,
+			env: {
+				...process.env,
+				// git finds its own helpers via exec-path, not PATH; the pager is
+				// disabled below. A minimal PATH avoids the slow search above.
+				PATH: GIT_PATH,
+				// status/diff refresh the index by default, which takes the index
+				// lock — several read-only git processes on one repo then serialize
+				// on it. These queries never need to write the index back.
+				GIT_OPTIONAL_LOCKS: "0",
+				GIT_PAGER: "cat",
+				GIT_TERMINAL_PROMPT: "0",
+			},
+		});
 		let out = "";
 		let err = "";
 		child.stdout.on("data", (chunk: Buffer) => (out += chunk));
@@ -37,29 +81,42 @@ function runGit(cwd: string, args: string[]): Promise<string> {
 }
 
 export async function gitStatus(cwd: string): Promise<GitStatusDto> {
-	const [branchRaw, porcelain, numstatRaw] = await Promise.all([
-		runGit(cwd, ["branch", "--show-current"]),
-		// --untracked-files=all: an untracked directory would otherwise collapse
-		// to a single "dir/" row, which is not a diffable file. Expanding it
-		// keeps the list to files, and each entry opens a real diff.
-		runGit(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
-		// Both the staged and the unstaged diff carry line counts.
-		runGit(cwd, ["diff", "--numstat"])
-			.then((a) => a + "\n" + runGit(cwd, ["diff", "--cached", "--numstat"]))
-			.catch(() => ""),
+	const [statusRaw, numstatRaw] = await Promise.all([
+		// --branch folds the branch name into the first "## " record, so the
+		// list and the top-bar title come from a single git status.
+		// --untracked-files=all expands untracked directories to files, each
+		// of which opens a real diff (a "dir/" row is not diffable).
+		runGit(cwd, ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"]),
+		// `git diff HEAD` covers staged + unstaged in one pass; the two-command
+		// fallback serves repos that have no HEAD yet (fresh git init).
+		runGit(cwd, ["diff", "HEAD", "--numstat"])
+			.catch(() =>
+				runGit(cwd, ["diff", "--numstat"])
+					.then((a) => a + "\n" + runGit(cwd, ["diff", "--cached", "--numstat"]))
+					.catch(() => ""),
+			),
 	]);
 
 	const changes = new Map<string, GitChangeDto>();
+	let branch = "";
 
-	// -z records are NUL-separated "XY path"; renames are two records (old, new).
-	const records = porcelain.split("\0");
+	// -z records are NUL-separated "XY path"; with --branch the first record is
+	// the "## branch" header. Renames/copies are two records: new path, then old.
+	const records = statusRaw.split("\0");
 	for (let i = 0; i < records.length; i++) {
 		const record = records[i]!;
+		if (record.startsWith("## ")) {
+			if (branch === "") branch = parseBranchHeader(record);
+			continue;
+		}
 		if (record.length < 4) continue; // "XY " + at least one path char
 		const xy = record.slice(0, 2);
 		let path = record.slice(3);
 		if ((xy[0] === "R" || xy[0] === "C") && i + 1 < records.length) {
-			path = records[++i]!;
+			// First record is the new path, which is what the list should show
+			// (and what the diff screen can open); the old path follows and is
+			// skipped so the numstat "old => new" rows match up by new path.
+			i++;
 		}
 		changes.set(path, { path, status: statusLetter(xy), added: 0, deleted: 0 });
 	}
@@ -78,17 +135,37 @@ export async function gitStatus(cwd: string): Promise<GitStatusDto> {
 		}
 	}
 
-	// Untracked files have no diff stat; count their lines directly.
-	for (const change of changes.values()) {
-		if (change.status === "U") {
+	// Untracked files have no diff stat; count their lines directly. Read in
+	// parallel and asynchronously so a big untracked tree cannot block the
+	// event loop (readFileSync would stall every other request while it runs).
+	await Promise.all(
+		[...changes.values()].map(async (change) => {
+			if (change.status !== "U") return;
 			const file = resolve(cwd, change.path);
-			if (existsSync(file) && statSync(file).isFile()) {
-				change.added = countLines(file);
+			const st = await stat(file).catch(() => null);
+			if (st?.isFile()) {
+				change.added = await countLines(file);
 			}
-		}
-	}
+		}),
+	);
 
-	return { branch: branchRaw.trim(), changes: [...changes.values()] };
+	return { branch, changes: [...changes.values()] };
+}
+
+/**
+ * The first `git status --porcelain=v1 --branch` record, e.g.
+ * "## main...origin/main [ahead 1]" → "main". Repos with no commits yet
+ * ("## No commits yet on main") or a detached HEAD ("## HEAD (no branch)")
+ * print placeholders where `git branch --show-current` answered with an empty
+ * string — keep that behaviour so the title falls back to "Git" as before.
+ */
+function parseBranchHeader(record: string): string {
+	const raw = record.slice(3);
+	if (raw.startsWith("No commits yet") || raw.startsWith("HEAD (")) return "";
+	const end = raw.indexOf("...");
+	const head = (end === -1 ? raw : raw.slice(0, end)).trim();
+	const space = head.indexOf(" ");
+	return space === -1 ? head : head.slice(0, space);
 }
 
 export async function gitDiff(cwd: string, path: string): Promise<GitDiffDto> {
@@ -248,9 +325,9 @@ function statusLetter(xy: string): GitChangeDto["status"] {
 	}
 }
 
-function countLines(file: string): number {
+async function countLines(file: string): Promise<number> {
 	try {
-		const text = readFileSync(file, "utf8");
+		const text = await readFile(file, "utf8");
 		return text.length === 0 ? 0 : text.split("\n").length;
 	} catch {
 		return 0;
