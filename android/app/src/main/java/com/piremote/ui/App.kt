@@ -57,14 +57,14 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
         }
     }
 
-    // One client and one repository for the whole app; the client's fields are
-    // mutable so changing the connection does not orphan the session stores.
-    val client = remember { PiRemoteClient("", "") }
-    val repo = remember { AppRepository(client, scope, context.applicationContext) }
+    // One repository for the whole process (see AppRepository.get): a fresh
+    // one per Activity recreation leaks a WebSocket each time, and the server
+    // pushes every update to each connection — doubled streaming output.
+    val repo = remember { AppRepository.get(context) }
 
     LaunchedEffect(connection) {
-        client.baseUrl = connection.baseUrl
-        client.token = connection.token
+        repo.client.baseUrl = connection.baseUrl
+        repo.client.token = connection.token
         if (connection.isConfigured) {
             repo.refreshProjects()
             repo.loadModels()

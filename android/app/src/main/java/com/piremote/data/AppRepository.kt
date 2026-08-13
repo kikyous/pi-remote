@@ -11,6 +11,8 @@ import com.piremote.net.WorkspaceDto
 import com.piremote.net.SocketStatus
 import com.piremote.service.AgentForegroundService
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -51,6 +53,36 @@ class AppRepository(
      */
     private val appContext: android.content.Context,
 ) {
+    companion object {
+        @Volatile
+        private var instance: AppRepository? = null
+
+        /**
+         * Process-wide singleton.
+         *
+         * A fresh instance per Activity recreation leaks one WebSocket per
+         * recreation: the old EventSocket never disconnects, every new one
+         * subscribes the same sessions, and the server pushes each update to
+         * every connection — the client ends up applying the same deltas
+         * twice (streaming output shows every line doubled). The client's
+         * mutable fields already allow changing the connection without
+         * rebuilding, so one instance for the process is all there should be.
+         */
+        fun get(context: android.content.Context): AppRepository {
+            instance?.let { return it }
+            synchronized(this) {
+                instance?.let { return it }
+                val app = context.applicationContext
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+                val repo = AppRepository(PiRemoteClient("", ""), scope, app)
+                instance = repo
+                return repo
+            }
+        }
+
+        const val MAX_CACHED_SESSIONS = 5
+    }
+
     private val _browse = MutableStateFlow(BrowseState())
     val browse: StateFlow<BrowseState> = _browse.asStateFlow()
 
@@ -138,8 +170,16 @@ class AppRepository(
         val next = transform(_running.value)
         if (next == _running.value) return
         _running.value = next
-        if (next.isEmpty()) AgentForegroundService.stop(appContext)
-        else AgentForegroundService.start(appContext, next.size)
+        if (next.isEmpty()) {
+            runCatching { AgentForegroundService.stop(appContext) }
+        } else {
+            // startForegroundService() itself can throw
+            // ForegroundServiceStartNotAllowedException when the system refuses
+            // a background start. The run continues either way — only the
+            // keep-alive is lost — so the crash must not propagate.
+            runCatching { AgentForegroundService.start(appContext, next.size) }
+                .onFailure { android.util.Log.w("PiRemote", "foreground service start refused: ${it.message}") }
+        }
     }
 
     /** Look up a store without creating one — used by event routing. */
@@ -269,8 +309,4 @@ class AppRepository(
     }
 
     fun clearError() = _browse.update { it.copy(error = null) }
-
-    private companion object {
-        const val MAX_CACHED_SESSIONS = 5
-    }
 }

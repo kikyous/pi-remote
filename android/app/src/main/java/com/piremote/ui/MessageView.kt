@@ -189,14 +189,11 @@ private fun AssistantBlock(
     onExpand: (String) -> Unit,
     modifier: Modifier,
 ) {
-    // Three stacked cards, in the order the turn actually happened: thinking,
-    // tool calls, then the reply text. Each can fold to its header rows.
+    // Stacked cards, reply-first: thinking, the reply text, then the tool
+    // calls that produced it. Text above tools so a streamed reply is never
+    // visually jumped over by a tool card appearing above it.
     Column(modifier.fillMaxWidth()) {
         item.thinking?.let { ThinkingCard(it, active = item.pending, expanded = expanded, onExpand = onExpand) }
-
-        if (tools.isNotEmpty()) {
-            ToolCallsCard(tools, expanded, onExpand)
-        }
 
         if (item.text.s.isNotBlank() || item.error != null) {
             // Text keeps its own softer card (14dp, no border) — it is a body
@@ -239,6 +236,10 @@ private fun AssistantBlock(
                     )
                 }
             }
+        }
+
+        if (tools.isNotEmpty()) {
+            ToolCallsCard(tools, expanded, onExpand)
         }
 
         // Per-turn token usage, pi-TUI style. Rendered outside the card,

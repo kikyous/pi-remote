@@ -60,9 +60,15 @@ export function attachWebSocket(server: Server, token: string): WebSocketServer 
 
 	// An agent replaced under its subscribers restarts at seq 0, so every cursor
 	// is stale; the only correct move is a fresh snapshot to each follower.
+	//
+	// A fresh subscribe rather than a bare sendHello: reload swaps the agent
+	// under us and the carried listener is already flowing, so a bare hello
+	// races the in-flight appends of the new agent — the client would receive
+	// the same deltas twice (visible as doubled streaming output). doSubscribe's
+	// held/release window withholds exactly the pushes the snapshot covers.
 	setResyncHandler((sessionId) => {
 		for (const conn of connections.values()) {
-			if (conn.following.has(sessionId)) void sendHello(conn, sessionId);
+			if (conn.following.has(sessionId)) void doSubscribe(conn, sessionId, undefined);
 		}
 	});
 

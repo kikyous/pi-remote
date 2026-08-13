@@ -26,17 +26,49 @@ class AgentForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val count = intent?.getIntExtra(EXTRA_COUNT, 1) ?: 1
-        startForegroundCompat(buildNotification(count))
-        return START_STICKY
+    override fun onCreate() {
+        super.onCreate()
+        // Foreground immediately, not in onStartCommand.
+        //
+        // Android 12+ kills the process if startForeground() does not land
+        // within ~5s of startForegroundService(). onStartCommand may be
+        // delayed by OEM systems (Honor/Huawei) for background starts — the
+        // process is woken from a frozen cgroup, and the service args message
+        // can sit behind other main-thread work. onCreate is the earliest
+        // legal point, so the window collapses to almost nothing.
+        AgentForegroundService.ensureChannels(this)
+        startForegroundSafely(buildNotification(1))
     }
 
-    private fun startForegroundCompat(notification: android.app.Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(ONGOING_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(ONGOING_ID, notification)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val count = intent?.getIntExtra(EXTRA_COUNT, 1) ?: 1
+        // Already foreground from onCreate; this call only updates the
+        // notification to the real count. Re-calling startForeground with a
+        // new notification is legal and idempotent.
+        startForegroundSafely(buildNotification(count))
+        return START_NOT_STICKY
+    }
+
+    /**
+     * Never let a failed startForeground() cost the process.
+     *
+     * Without a successful startForeground, Android throws
+     * ForegroundServiceDidNotStartInTimeException and kills us ~5s later.
+     * If the system refuses the call (OEM restriction, service type not
+     * allowed, ...), the honest move is to give up the foreground state
+     * rather than the process: the run still finishes, the completion
+     * notification still fires, only the keep-alive is lost.
+     */
+    private fun startForegroundSafely(notification: android.app.Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(ONGOING_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            } else {
+                startForeground(ONGOING_ID, notification)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("PiRemoteFGS", "startForeground failed: ${e.message}")
+            stopSelf()
         }
     }
 
