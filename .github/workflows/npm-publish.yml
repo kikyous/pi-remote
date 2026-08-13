@@ -41,6 +41,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Trusted publishing (OIDC) requires npm CLI >= 11.5.1. Node 22 ships
+      # npm 10.x, so upgrade before publishing.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -54,44 +59,8 @@ jobs:
         if: github.ref_type == 'tag'
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
-      # TEMP DIAGNOSIS: print the OIDC claims npm matches against, so a 404
-      # from trusted publishing can be traced to the exact mismatching field.
-      - name: Debug OIDC claims
-        run: |
-          echo "== npmrc =="
-          cat "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}" 2>/dev/null | sed 's/_authToken=.*/_authToken=<masked>/'
-          echo "== OIDC claims =="
-          TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r .value)
-          echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{aud, ref, sha, repository, repository_owner, job_workflow_ref, workflow, environment, actor, run_attempt}'
-
-      # Decisive probe: does the registry accept our OIDC token at all?
-      # 401/403 → auth works but account/permission issue;
-      # 404     → the OIDC identity itself is unknown to the registry.
-      - name: Probe registry with raw OIDC token
-        run: |
-          TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r .value)
-          echo "== PUT with OIDC bearer =="
-          curl -sS -o /tmp/resp.txt -w "HTTP %{http_code}\n" -X PUT \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{}' https://registry.npmjs.org/pi-remote-bridge || true
-          head -c 500 /tmp/resp.txt; echo
-
-      # Which OIDC audience does the registry accept? Probe several and watch
-      # for a status other than 404 (which would mean the token was understood).
-      - name: Probe OIDC audiences
-        run: |
-          for AUD in sigstore "https://registry.npmjs.org" npm "registry.npmjs.org" "https://github.com/nicedoc/pi"; do
-            TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUD}" | jq -r .value)
-            CODE=$(curl -sS -o /tmp/r.txt -w "%{http_code}" -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}' https://registry.npmjs.org/pi-remote-bridge || echo ERR)
-            echo "aud=$AUD -> HTTP $CODE"
-          done
-
       - name: Publish to npm
         # --provenance triggers npm's OIDC trusted-publishing flow: npm fetches
         # a GitHub OIDC token and authenticates to the registry with it (no
         # NODE_AUTH_TOKEN on purpose — a stray token would take precedence).
-        # NODE_DEBUG=http prints the actual Authorization header npm sends.
-        run: npm publish --provenance --loglevel silly
-        env:
-          NODE_DEBUG: http
+        run: npm publish --provenance
