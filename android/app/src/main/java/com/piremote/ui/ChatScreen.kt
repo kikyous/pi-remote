@@ -372,10 +372,6 @@ fun ChatScreen(
                             tools = row.tools,
                             expanded = state.expanded,
                             onExpand = store::expand,
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = tween(durationMillis = 0),
-                                fadeOutSpec = tween(durationMillis = 0),
-                            ),
                         )
                     }
 
