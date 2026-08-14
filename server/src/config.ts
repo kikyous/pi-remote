@@ -15,10 +15,6 @@ export interface ServerConfig {
 const DEFAULT_PORT = 30150;
 const DEFAULT_HOST = "0.0.0.0";
 
-function remoteDir(): string {
-	return join(homedir(), ".pi", "remote");
-}
-
 /**
  * Read the shared token, generating one on first run.
  *
@@ -27,7 +23,7 @@ function remoteDir(): string {
  * file is written 0600.
  */
 export function loadOrCreateToken(): string {
-	const dir = remoteDir();
+	const dir = join(homedir(), ".pi", "remote");
 	const file = join(dir, "token");
 	try {
 		const existing = readFileSync(file, "utf8").trim();
@@ -72,7 +68,7 @@ export function parseArgs(argv: string[]): ServerConfig {
 }
 
 function printUsage(): void {
-	console.log(`pi-remote-bridge - LAN bridge for the pi coding agent
+	console.log(`pi-remote-bridge - LAN bridge for a local coding agent
 
 Usage:
   pi-remote-bridge [options]

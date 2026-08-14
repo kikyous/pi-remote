@@ -1,7 +1,8 @@
 import type { AgentSessionEvent, SessionEntry } from "@earendil-works/pi-coding-agent";
 
-import { itemsFromEntries, resultFields } from "../items.ts";
-import type { ContextUsageDto, Item, ItemPatch, SessionStatus, Text } from "../protocol.ts";
+import type { LiveView, Mutation, StatusProbe } from "../../live/types.ts";
+import type { Item, ItemPatch, SessionStatus, Text } from "../../protocol.ts";
+import { itemsFromEntries, resultFields } from "./items.ts";
 
 /**
  * The SDK's event stream → mutations of the item list.
@@ -19,43 +20,12 @@ import type { ContextUsageDto, Item, ItemPatch, SessionStatus, Text } from "../p
  * path uses — so the streamed view and the stored view cannot drift.
  */
 
-/** A push without its `sessionId`/`seq`, which the pool assigns. */
-export type Mutation =
-	| { t: "add"; item: Item }
-	| { t: "patch"; id: string; append?: { f: "text" | "thinking" | "output"; s: string }; set?: ItemPatch }
-	| { t: "status"; status: SessionStatus };
-
 /**
- * What the translator cannot know by itself, supplied by the pool.
- *
- * Split in two because the halves cost wildly different amounts. `running` is a
- * field read. `context` walks the whole branch and re-estimates every message —
- * measured at **1.96ms** on a 1460-entry session, which at one call per SDK event
- * came to **15.6 seconds of CPU for a single long turn**, on the event path, ahead
- * of every flush. Deltas cannot change stored context anyway, so it is only read
- * when something has actually landed.
+ * The pi half of a [LiveView]: the same in-flight view every backend exposes,
+ * plus the one method whose argument type is pi's own.
  */
-export interface StatusProbe {
-	running(): boolean;
-	context(): ContextUsageDto | undefined;
-}
-
-export interface Translator {
+export interface Translator extends LiveView {
 	handle(event: AgentSessionEvent): void;
-	/** The in-flight assistant item, for a client subscribing mid-run. */
-	tail(): Item | undefined;
-	status(): SessionStatus;
-	/** Re-read the probe and emit a status push if anything moved. */
-	syncStatus(withContext?: boolean): void;
-	/**
-	 * The id the server's item list uses for an id the client may still hold.
-	 *
-	 * A streaming message is added under a minted `live-N` and keeps that id on the
-	 * client for good, while the settled entry has an id of its own. Without this,
-	 * catching a client up on that message would look like an id that resolves to
-	 * nothing.
-	 */
-	resolve(id: string): string;
 }
 
 interface Streaming {

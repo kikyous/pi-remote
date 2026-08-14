@@ -1,24 +1,12 @@
 import { createServer } from "node:http";
 
-import { createSession, createWorkspace, disposeAll, isRunning, liveTree } from "./agent-pool.ts";
-import { deleteSession, deleteWorkspace } from "./delete.ts";
-import {
-	abortSession,
-	generateSessionTitle,
-	listModels,
-	loadedSessionState,
-	sendPrompt,
-	type SessionPatch,
-	updateSession,
-} from "./commands.ts";
-import { lanAddresses, parseArgs } from "./config.ts";
+import { backend, type SessionPatch, setBackend } from "./backend.ts";
+import { lanAddresses, parseArgs, type ServerConfig } from "./config.ts";
 import { isDebug, setDebug } from "./debug.ts";
 import { buildConnectPayload, renderConnectQr } from "./qr.ts";
 import { gitCommitDiff, gitCommits, gitDiff, gitStatus } from "./git.ts";
 import { HttpError, Router } from "./http.ts";
 import { API_PREFIX, PROTOCOL, type PromptImageDto } from "./protocol.ts";
-import { setLiveSource } from "./sessions/model.ts";
-import { getDetail, getFullByRef, getItemPage, listProjects, listSessions, setLiveStateProbe, setRunningProbe } from "./store.ts";
 import { attachWebSocket } from "./ws.ts";
 
 const VERSION = "0.3.1";
@@ -26,8 +14,19 @@ const VERSION = "0.3.1";
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
 
-function main(): void {
-	let config;
+/**
+ * Load the pi backend.
+ *
+ * Imported on demand rather than at the top: the pi SDK is several megabytes of
+ * agent runtime, and the bridge only pays for it when it actually starts.
+ */
+async function selectBackend(): Promise<void> {
+	const { createPiBackend } = await import("./backends/pi/index.ts");
+	setBackend(createPiBackend());
+}
+
+async function main(): Promise<void> {
+	let config: ServerConfig;
 	try {
 		config = parseArgs(process.argv.slice(2));
 	} catch (err) {
@@ -35,12 +34,10 @@ function main(): void {
 		process.exit(1);
 	}
 
-	// Lets the read-only layer see live state without importing the pool, which
-	// would be a cycle. A loaded agent's tree outranks the file on disk.
-	setRunningProbe(isRunning);
-	setLiveSource(liveTree);
-	setLiveStateProbe(loadedSessionState);
 	setDebug(config.debug);
+	// Everything below this line is written against `AgentBackend`; which agent is
+	// actually behind it is decided exactly here.
+	await selectBackend();
 
 	const router = new Router();
 
@@ -49,11 +46,11 @@ function main(): void {
 	// failing somewhere downstream.
 	router.get(`${API_PREFIX}/ping`, () => ({ ok: true, version: VERSION, protocol: PROTOCOL }));
 
-	router.get(`${API_PREFIX}/projects`, () => listProjects());
+	router.get(`${API_PREFIX}/projects`, () => backend().listProjects());
 
 	router.get(`${API_PREFIX}/sessions`, (ctx) => {
 		const cwd = decodeCwd(ctx.query.get("cwd"));
-		return listSessions(cwd);
+		return backend().listSessions(cwd);
 	});
 
 	// There is no `GET /sessions/:id`: the settings arrive in the WebSocket's
@@ -61,7 +58,7 @@ function main(): void {
 	// opens a session instead of two, and nothing polls.
 	router.get(`${API_PREFIX}/sessions/:id/items`, (ctx) => {
 		const before = ctx.query.get("before") ?? undefined;
-		return getItemPage(ctx.params.id!, before, parseLimit(ctx.query.get("limit")));
+		return backend().getItemPage(ctx.params.id!, before, parseLimit(ctx.query.get("limit")));
 	});
 
 	// One endpoint for every kind of shortened content, addressed by the opaque
@@ -69,10 +66,10 @@ function main(): void {
 	router.get(`${API_PREFIX}/sessions/:id/full`, (ctx) => {
 		const ref = ctx.query.get("ref");
 		if (!ref) throw new HttpError(400, "Missing ref parameter", "missing_ref");
-		return getFullByRef(ctx.params.id!, ref);
+		return backend().getFullByRef(ctx.params.id!, ref);
 	});
 
-	router.get(`${API_PREFIX}/models`, () => listModels());
+	router.get(`${API_PREFIX}/models`, () => backend().listModels());
 
 	// Read-only git queries for the repo a session lives in.
 	router.get(`${API_PREFIX}/git/status`, (ctx) => gitStatus(decodeCwd(ctx.query.get("cwd"))));
@@ -97,7 +94,7 @@ function main(): void {
 		if (typeof cwd !== "string" || !cwd.startsWith("/")) {
 			throw new HttpError(400, "cwd must be an absolute path", "bad_cwd");
 		}
-		return createSession(cwd, {
+		return backend().createSession(cwd, {
 			...(typeof body.provider === "string" ? { provider: body.provider } : {}),
 			...(typeof body.modelId === "string" ? { modelId: body.modelId } : {}),
 			...(typeof body.thinkingLevel === "string" ? { thinkingLevel: body.thinkingLevel } : {}),
@@ -106,11 +103,11 @@ function main(): void {
 
 	// One-tap default workspace: `~/pi-cwd-YYYYMMDD` on the server. The path is
 	// derived entirely server-side, so the client never sends a directory.
-	router.post(`${API_PREFIX}/workspaces`, () => createWorkspace());
+	router.post(`${API_PREFIX}/workspaces`, () => backend().createWorkspace());
 
 	// Swipe-to-delete: sessions, and whole workspaces (all their sessions).
-	router.delete(`${API_PREFIX}/sessions/:id`, (ctx) => deleteSession(ctx.params.id!));
-	router.delete(`${API_PREFIX}/workspaces`, (ctx) => deleteWorkspace(decodeCwd(ctx.query.get("cwd"))));
+	router.delete(`${API_PREFIX}/sessions/:id`, (ctx) => backend().deleteSession(ctx.params.id!));
+	router.delete(`${API_PREFIX}/workspaces`, (ctx) => backend().deleteWorkspace(decodeCwd(ctx.query.get("cwd"))));
 
 	router.post(`${API_PREFIX}/sessions/:id/prompt`, (ctx) => {
 		const body = asRecord(ctx.body);
@@ -119,16 +116,16 @@ function main(): void {
 			throw new HttpError(400, "streamingBehavior must be 'steer' or 'followUp'", "bad_streaming_behavior");
 		}
 		const images = parseImages(body.images);
-		return sendPrompt(ctx.params.id!, body.message as string, behavior, images);
+		return backend().prompt(ctx.params.id!, body.message as string, behavior, images);
 	});
 
-	router.post(`${API_PREFIX}/sessions/:id/abort`, (ctx) => abortSession(ctx.params.id!));
+	router.post(`${API_PREFIX}/sessions/:id/abort`, (ctx) => backend().abort(ctx.params.id!));
 
 	// AI-generated title from the conversation; persisted as the session name.
 	// Answers with the new detail, so the client does not follow up with a read.
 	router.post(`${API_PREFIX}/sessions/:id/title`, async (ctx) => {
-		await generateSessionTitle(ctx.params.id!);
-		return getDetail(ctx.params.id!);
+		await backend().generateTitle(ctx.params.id!);
+		return backend().getDetail(ctx.params.id!);
 	});
 
 	router.patch(`${API_PREFIX}/sessions/:id`, async (ctx) => {
@@ -140,15 +137,15 @@ function main(): void {
 		if (typeof body.name === "string") patch.name = body.name;
 		// Switching model can clamp the thinking level, so the answer is the whole
 		// new detail rather than a list of touched field names — one round trip.
-		await updateSession(ctx.params.id!, patch);
-		return getDetail(ctx.params.id!);
+		await backend().updateSession(ctx.params.id!, patch);
+		return backend().getDetail(ctx.params.id!);
 	});
 
 	const server = createServer(router.listener(config.token));
 	attachWebSocket(server, config.token);
 
 	server.listen(config.port, config.host, () => {
-		printBanner(config.port, config.host, config.token);
+		printBanner(config);
 	});
 
 	server.on("error", (err) => {
@@ -160,7 +157,7 @@ function main(): void {
 		console.log(`\n${signal} received, shutting down.`);
 		// Dispose agents first: they hold session files open and have pending
 		// writes that should land before the process goes away.
-		void disposeAll().finally(() => server.close(() => process.exit(0)));
+		void backend().dispose().finally(() => server.close(() => process.exit(0)));
 		// Do not let a hung connection block exit.
 		setTimeout(() => process.exit(0), 5_000).unref();
 	};
@@ -226,12 +223,14 @@ function parseLimit(raw: string | null): number {
 	return Math.min(value, MAX_PAGE_LIMIT);
 }
 
-function printBanner(port: number, host: string, token: string): void {
+function printBanner(config: ServerConfig): void {
+	const { port, host, token } = config;
 	const shown = host === "0.0.0.0" || host === "::" ? (lanAddresses()[0] ?? "127.0.0.1") : host;
 	const url = `http://${shown}:${port}`;
 	console.log(`pi-remote-bridge ${VERSION}`);
 	console.log(`  URL:   ${url}`);
 	console.log(`  Token: ${token}`);
+	console.log(`  Agent: pi (in-process SDK)`);
 	if (host === "0.0.0.0" || host === "::") {
 		const others = lanAddresses().slice(1);
 		if (others.length > 0) {
@@ -248,4 +247,4 @@ function printBanner(port: number, host: string, token: string): void {
 	});
 }
 
-main();
+void main();

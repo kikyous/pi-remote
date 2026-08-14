@@ -1,25 +1,43 @@
 # pi-remote-bridge — 开发笔记
 
 ```bash
-npm run dev        # tsx watch, 端口 30150
+npm run dev            # tsx watch, 端口 30150
 npm run typecheck
-npm test           # 单元测试 (node --test)
-npm run test:e2e   # 端到端，需要先跑起服务
+npm test               # 单元测试 (node --test)
+npm run test:e2e       # pi 后端端到端，需要先跑起服务
 ```
 
-Token 在 `~/.pi/remote/token`，首次启动自动生成并打印。启动横幅附带二维码（`qr.ts`），手机端扫码即得 URL+token，不用手抄 32 位 token。
+Token 在 `~/.pi/remote/token`（dsh 后端是 `~/.pi/remote/dsh/token`），首次启动自动生成并打印。启动横幅附带二维码（`qr.ts`），手机端扫码即得 URL+token，不用手抄 32 位 token。
 
-## 架构
+## 两个后端
+
+`protocol.ts` 是 app 认的东西，它里面没有任何 agent 的痕迹——**兼容负担全部压在 `backend.ts`
+这条缝上**。缝以上（`http.ts` / `ws.ts` / `git.ts` / `live/hub.ts` / `live/coalesce.ts` /
+`shorten.ts` / `refs.ts`）不 import 任何后端模块；缝以下每个 agent 一个目录。
+
+| | pi | dsh |
+|---|---|---|
+| 怎么驱动 | 进程内 SDK（`createAgentSession`） | HTTP + 两条 WS 连本机 `dsh web` |
+| 历史从哪来 | `~/.pi/agent/sessions/**.jsonl`，按 `(mtime,size)` 缓存解析 | `session.history` RPC，缓存在内存，靠 mux 保持最新 |
+| item id | entry 的 ULID | 事件的 `seq`（单调且连续，兼作分页游标和 ref 的地址） |
+| 流式与落盘 | 两条流，要靠引用相等 + 延后 `stat` 对账 | 同一条带 `seq` 的流，按顺序到达 |
+| 起 agent | 发消息时 `createAgentSession()` | 发消息时 harness 自己 resume |
+
+选后端：`--backend pi|dsh`（默认 pi），dsh 用 `--dsh-url` 指定 host（默认 `http://127.0.0.1:3080`）。
+两个后端的模块都是**按需 import** 的，跑 dsh 不加载 pi SDK。
+
+## 架构（pi 后端）
 
 ```
-索引（找会话）        sessions/scan.ts     readdir，不解析任何文件
-浏览（只读）          sessions/model.ts    解析后的树，按 (mtime,size) 缓存
-                     items.ts             entry → Item[]（唯一定义 item 最终形态的地方）
-                     store.ts             投影到 wire 类型
-执行（写入）          agent-pool.ts → createAgentSession()      仅发消息时创建
-事件流                live/translate.ts    SDK 事件 → item 变更（唯一认识 AgentSessionEvent 的文件）
-                     live/coalesce.ts     80ms / 4KB 攒批
-                     ws.ts                扇出给所有订阅者
+索引（找会话）        backends/pi/scan.ts      readdir，不解析任何文件
+浏览（只读）          backends/pi/model.ts     解析后的树，按 (mtime,size) 缓存
+                     backends/pi/items.ts     entry → Item[]（唯一定义 item 最终形态的地方）
+                     backends/pi/store.ts     投影到 wire 类型
+执行（写入）          backends/pi/agent-pool.ts → createAgentSession()   仅发消息时创建
+事件流                backends/pi/translate.ts SDK 事件 → item 变更（唯一认识 AgentSessionEvent 的文件）
+                     live/coalesce.ts         80ms / 4KB 攒批
+                     live/hub.ts              seq 分配、订阅扇出、补齐记账（两个后端共用）
+                     ws.ts                    扇出给所有订阅者
 ```
 
 **浏览走文件、执行才起 agent。** 会话列表和历史只读 JSONL，切换会话不产生任何 agent 开销——
@@ -265,6 +283,72 @@ pi-ai 的 `ThinkingLevel` **不含** `"off"`（那个叫 `ModelThinkingLevel`）
 
 `node --experimental-strip-types` 只擦类型不转换代码，参数属性（`constructor(readonly x: T)`）
 会让 `node --test` 直接语法报错。字段显式赋值。
+
+## dsh 后端的坑
+
+### 两条下行 socket 之间没有顺序
+
+`/api/events.mux`（内容）和 `/api/events.host`（running 翻转）是**两条独立的 WebSocket**。
+最早的实现在 `host/session-status(running:false)` 上清理流式状态，结果 `running:false` 抢在
+mux 的 `assistant/message` 前面到达，那条消息就被当成「没有在流的消息」重新 `add` 了一次——
+推流比落盘多出一条 assistant。凡是要和内容对齐的动作，都必须挂在 mux 自己的事件上
+（现在是 `turn/end`）。
+
+### 快照必须同步，所以日志得先预热
+
+`hello` 要在同一个 tick 里读 item 页和 seq（见 `store.ts` 的注释和 `backend.ts` 的
+`SessionHandle`）。pi 靠的是缓存好的同步解析；dsh 的历史是 RPC，所以 `acquire()` 里先
+`logs.load()` 把整份日志拉进内存，`open()` 之后的 `itemPage()` 一个 await 都不能有。
+
+`ws.ts` 在 `acquire` 之后就挂监听器，所以拉取期间会有事件到达——`SessionLogs` 为此留了一个
+pending 缓冲，拉完再按 seq 合并进去。不做这件事的后果不是丢推送（推送照发），而是**服务端的
+日志比客户端少一条**，下次补齐会把过期的版本发回去。
+
+### 断线就是重来
+
+harness 的 mux 接受 `since` 但**忽略**它（v1 未实现），重连后不重放任何东西。所以掉线一律
+`logs.clear()` + 对每个订阅者触发 resync——`hello` 本来就是干这个的。
+
+### 只读，但会话得先「存在」
+
+`session.history` 明确不会 resume/publish agent，所以浏览是免费的。但 `session.list` **不**过滤
+归档会话（归档是 workspace 注册表的事），app 的滑动删除映射到 `workspace.archiveSession`，
+所以归档集合要自己维护：启动时 `workspace.list` 拿基线，之后靠 `host/archived-sessions-changed`
+和 `archiveSession` 的返回值更新。不过滤的话，删除在手机上看起来就是没反应。
+
+### 不读 `request/header`
+
+它带着整份拼好的 system prompt——实测**单条 38KB**。provider/model 用 `request/context`（3 个
+字段）就够；只有 `reasoningEffort` 必须从 header 的 `config` 里取，而且它写在同一次请求的
+`request/context` **之前**，按顺序折叠会每次都丢掉。
+
+### 不存 `assistant/chunk`
+
+实测一个会话 2589 条事件里 2521 条是 chunk。它们不产生 item，后面的 `assistant/message` 带着
+同样的文本，所以内存日志直接跳过它们。也因此 `session.history` 的分页几乎没用：`maxMessages: 5`
+要 483KB，整个会话也才 667KB——一页必须带上它覆盖的消息的全部 chunk 事件。索性一次拉完整份，
+和 pi 一样从完整列表里切页（工具调用和它的结果是两条事件，切在中间会让调用行永远转圈）。
+
+### 注入的 user/message 不是人说的话
+
+harness 把运行时快照、skill 目录、各级 AGENTS.md 都作为 user 角色的消息喂给模型，实测每轮真
+prompt 周围有三条。只有 `source.kind` 能区分（`user` / `user-rpc` 是人，其余不是）。不过滤的话
+对话会被机器话淹没。
+
+### 审批和提问只能拒
+
+protocol 2 的 `Item` 没有可交互卡片，手机上没法弹「允许吗」。但**不答复 agent 会永久等**——
+所以 `approval/requested` 一律答 `rejected`（必须是 `ok:true` + `outcome:'rejected'`；
+`ok:false` 会被当成 malformed，什么都不解除），`question/requested` 用 `ok:false` +
+`code:'cancelled'` 取消。两者都往对话里插一条 notice，让用户知道发生过、可以去 dsh 的 web UI 处理。
+
+### 手抄的线协议
+
+`backends/dsh/wire.ts` 是手抄的，不是 import 的。`@deepseek-ai/dsh-host-apiproxy/api` 确实发在
+npm 上（注意 `latest` tag 指向的比 `next` 旧），但它 type-only 依赖另外七个 `@deepseek-ai/dsh-*`
+包，而 harness 自己声明是会破坏兼容的 developer preview。真正的约束是：bridge 得能对付用户实际
+跑的那个版本，所以运行时无论如何都要防御。手抄的部分全部是 optional 或宽类型，缺字段一律当
+「这个版本不报这个」处理。
 
 ## API
 

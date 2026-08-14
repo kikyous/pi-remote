@@ -8,7 +8,8 @@ import { join } from "node:path";
 import WebSocket from "ws";
 
 const TOKEN = readFileSync(join(homedir(), ".pi", "remote", "token"), "utf8").trim();
-const BASE = "http://127.0.0.1:30150/api/v1";
+const PORT = process.env.PI_REMOTE_PORT ?? "30150";
+const BASE = `http://127.0.0.1:${PORT}/api/v1`;
 const CWD = join(homedir(), "pi-remote-e2e");
 mkdirSync(CWD, { recursive: true });
 
@@ -36,7 +37,7 @@ if (ping.protocol !== 2) { console.error(`   失败: protocol=${ping.protocol}, 
 console.log(`   version=${ping.version} protocol=${ping.protocol}`);
 
 console.log("3. WS 订阅（hello 带首屏 + detail + status，无需 GET detail）…");
-const ws = new WebSocket(`ws://127.0.0.1:30150/ws?token=${encodeURIComponent(TOKEN)}`);
+const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(TOKEN)}`);
 const frames = [];
 let bytes = 0;
 let lastSeq = 0;

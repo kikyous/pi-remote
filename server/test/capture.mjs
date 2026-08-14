@@ -16,7 +16,8 @@ import { join } from "node:path";
 import WebSocket from "ws";
 
 const TOKEN = readFileSync(join(homedir(), ".pi", "remote", "token"), "utf8").trim();
-const BASE = "http://127.0.0.1:30150/api/v1";
+const PORT = process.env.PI_REMOTE_PORT ?? "30150";
+const BASE = `http://127.0.0.1:${PORT}/api/v1`;
 const CWD = join(homedir(), "pi-remote-e2e");
 const OUT = process.argv[2];
 
@@ -39,7 +40,7 @@ const api = async (path, init = {}) => {
 const { id } = await api("/sessions", { method: "POST", body: JSON.stringify({ cwd: CWD }) });
 
 const frames = [];
-const ws = new WebSocket(`ws://127.0.0.1:30150/ws?token=${encodeURIComponent(TOKEN)}`);
+const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(TOKEN)}`);
 let done;
 const finished = new Promise((resolve) => (done = resolve));
 

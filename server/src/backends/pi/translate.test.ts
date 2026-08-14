@@ -5,9 +5,10 @@ import { test } from "node:test";
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
-import type { Item, SessionStatus, Text, TextPatch } from "../protocol.ts";
-import { createCoalescer } from "./coalesce.ts";
-import { createTranslator, type Mutation } from "./translate.ts";
+import type { Item, SessionStatus, Text, TextPatch } from "../../protocol.ts";
+import { createCoalescer } from "../../live/coalesce.ts";
+import type { Mutation } from "../../live/types.ts";
+import { createTranslator } from "./translate.ts";
 
 /**
  * A real captured turn — "bash, print 1 to 5 with 1s between" — replayed through
@@ -17,7 +18,7 @@ import { createTranslator, type Mutation } from "./translate.ts";
  * the old wire this turn cost 19,930 bytes across 135 frames, of which 51% of the
  * bytes were events the client never read.
  */
-const TRACE = join(import.meta.dirname, "..", "..", "test", "fixtures", "bash-turn.jsonl");
+const TRACE = join(import.meta.dirname, "..", "..", "..", "test", "fixtures", "bash-turn.jsonl");
 
 /** Mirrors the client: fold a push stream into the item list it describes. */
 function applyMutations(mutations: Mutation[]): { items: Item[]; status: SessionStatus } {

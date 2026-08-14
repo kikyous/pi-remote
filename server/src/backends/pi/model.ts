@@ -2,8 +2,8 @@ import { statSync } from "node:fs";
 
 import { type SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { itemsFromEntries } from "../items.ts";
-import type { Item } from "../protocol.ts";
+import { itemsFromEntries } from "./items.ts";
+import type { Item } from "../../protocol.ts";
 import type { Located } from "./scan.ts";
 
 /**

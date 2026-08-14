@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { catchUpIds, todayStamp } from "./agent-pool.ts";
+import { catchUpIds } from "./hub.ts";
 
-/** itemId → the sequence at which it last changed, as the pool records it. */
+/** itemId → the sequence at which it last changed, as the hub records it. */
 function touched(entries: Record<string, number>): Map<string, number> {
 	return new Map(Object.entries(entries));
 }
@@ -40,9 +40,4 @@ test("a long turn is one item to resend, however many pushes it took", () => {
 
 	const stale = catchUpIds(streaming, 1042, 3);
 	assert.deepEqual([...(stale ?? [])], ["live-1"]);
-});
-
-test("todayStamp pads day and month to two digits", () => {
-	assert.equal(todayStamp(new Date(2026, 0, 5)), "20260105");
-	assert.equal(todayStamp(new Date(2026, 10, 30)), "20261130");
 });

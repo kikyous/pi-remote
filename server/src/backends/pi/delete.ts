@@ -1,9 +1,9 @@
 import { unlink } from "node:fs/promises";
 
 import { destroy } from "./agent-pool.ts";
-import { HttpError } from "./http.ts";
-import { forgetModel } from "./sessions/model.ts";
-import { forget } from "./sessions/scan.ts";
+import { HttpError } from "../../http.ts";
+import { forgetModel } from "./model.ts";
+import { forget } from "./scan.ts";
 import { childCwds, dropPendingSession, requireLocated, sessionsByCwd } from "./store.ts";
 
 /**

@@ -2,21 +2,18 @@ import type { Server } from "node:http";
 
 import { WebSocket, WebSocketServer } from "ws";
 
+import { backend, type SessionHandle } from "./backend.ts";
+import { debugLog, isDebug, redactUrl, truncate } from "./debug.ts";
+import { isAuthorized } from "./http.ts";
 import {
-	acquire,
 	type BufferedPush,
 	type EventListener,
-	getLoaded,
-	setResyncHandler,
+	type LiveSession,
 	snapshotPoint,
 	subscribe,
 	unsubscribe,
-} from "./agent-pool.ts";
-import { idleStatus } from "./commands.ts";
-import { debugLog, isDebug, redactUrl, truncate } from "./debug.ts";
-import { isAuthorized } from "./http.ts";
-import type { Item, Push, SessionStatus, WsCommand } from "./protocol.ts";
-import { getDetail, itemPageOf, requireLocated } from "./store.ts";
+} from "./live/hub.ts";
+import type { Item, Push, WsCommand } from "./protocol.ts";
 
 /**
  * Live push fan-out.
@@ -67,7 +64,7 @@ export function attachWebSocket(server: Server, token: string): WebSocketServer 
 	// races the in-flight appends of the new agent — the client would receive
 	// the same deltas twice (visible as doubled streaming output). doSubscribe's
 	// held/release window withholds exactly the pushes the snapshot covers.
-	setResyncHandler((sessionId) => {
+	backend().setResyncHandler((sessionId) => {
 		for (const conn of connections.values()) {
 			if (conn.following.has(sessionId)) void doSubscribe(conn, sessionId, undefined);
 		}
@@ -169,9 +166,9 @@ async function doSubscribe(conn: Connection, sessionId: string, sinceSeq: number
 	// top of it, so a client that reconnects mid-run gets one copy of everything.
 	doUnsubscribe(conn, sessionId, { quiet: true });
 
-	let live: Awaited<ReturnType<typeof acquire>>;
+	let live: LiveSession;
 	try {
-		live = await acquire(sessionId);
+		live = await backend().acquire(sessionId);
 	} catch (err) {
 		send(conn.socket, {
 			t: "error",
@@ -228,13 +225,13 @@ async function doSubscribe(conn: Connection, sessionId: string, sinceSeq: number
  */
 async function sendCatchUp(conn: Connection, sessionId: string, stale: Set<string>): Promise<number> {
 	if (stale.size === 0) {
-		const live = getLoaded(sessionId);
+		const live = backend().getLoaded(sessionId);
 		return live ? snapshotPoint(live).seq : 0;
 	}
 
-	let located: Awaited<ReturnType<typeof requireLocated>>;
+	let handle: SessionHandle;
 	try {
-		located = await requireLocated(sessionId);
+		handle = await backend().open(sessionId);
 	} catch {
 		// The session vanished under us; a snapshot will report it properly.
 		return sendHello(conn, sessionId);
@@ -242,10 +239,10 @@ async function sendCatchUp(conn: Connection, sessionId: string, stale: Set<strin
 
 	// No `await` from here to the last send: the sequence, the item list and the
 	// in-flight tail have to describe one instant. See [sendHello].
-	const live = getLoaded(sessionId);
+	const live = backend().getLoaded(sessionId);
 	if (!live) return sendHello(conn, sessionId);
 	const point = snapshotPoint(live);
-	const items = itemPageOf(located, undefined, CATCH_UP_SCAN).items;
+	const items = handle.itemPage(undefined, CATCH_UP_SCAN).items;
 
 	// A message the client watched stream is held under the `live-N` it was added
 	// as, while the stored entry has an id of its own. Resolve to the id our list
@@ -257,7 +254,7 @@ async function sendCatchUp(conn: Connection, sessionId: string, stale: Set<strin
 	// `hello`, whose sequence is already past the settle, so `live-N` is not in its
 	// catch-up set.
 	const wanted = new Map<string, string>();
-	for (const id of stale) wanted.set(live.translator.resolve(id), id);
+	for (const id of stale) wanted.set(live.view.resolve(id), id);
 
 	// In list order, so the client never inserts a newer item before an older one.
 	//
@@ -292,14 +289,9 @@ async function sendCatchUp(conn: Connection, sessionId: string, stale: Set<strin
  * the turn ended.
  */
 async function sendHello(conn: Connection, sessionId: string): Promise<number> {
-	let located: Awaited<ReturnType<typeof requireLocated>>;
-	let detail: Awaited<ReturnType<typeof getDetail>>;
-	let idle: SessionStatus | undefined;
+	let handle: SessionHandle;
 	try {
-		[located, detail] = await Promise.all([requireLocated(sessionId), getDetail(sessionId)]);
-		// A session with no agent loaded still has a context bar to fill, and only
-		// the file can answer for it.
-		if (!getLoaded(sessionId)) idle = await idleStatus(sessionId, detail.model);
+		handle = await backend().open(sessionId);
 	} catch (err) {
 		send(conn.socket, {
 			t: "error",
@@ -311,12 +303,13 @@ async function sendHello(conn: Connection, sessionId: string): Promise<number> {
 	}
 
 	// From here to the send there is no `await`, on purpose: the flush, the
-	// sequence number and the item list have to describe the same instant, or an
-	// entry landing in a gap between them would be in neither the snapshot nor the
-	// pushes released afterwards.
-	const live = getLoaded(sessionId);
+	// sequence number and the item list have to describe the same instant, or a
+	// mutation landing in a gap between them would be in neither the snapshot nor
+	// the pushes released afterwards. Everything a backend has to await for this
+	// happened in `open`.
+	const live = backend().getLoaded(sessionId);
 	const point = live ? snapshotPoint(live) : undefined;
-	const page = itemPageOf(located, undefined, HELLO_ITEMS);
+	const page = handle.itemPage(undefined, HELLO_ITEMS);
 
 	const items: Item[] = point?.tail ? [...page.items, point.tail] : page.items;
 	send(conn.socket, {
@@ -326,8 +319,8 @@ async function sendHello(conn: Connection, sessionId: string): Promise<number> {
 		items,
 		hasMore: page.hasMore,
 		oldest: page.oldest,
-		detail,
-		status: point?.status ?? idle ?? { running: false, queued: [], compacting: false },
+		detail: handle.detail,
+		status: point?.status ?? handle.idleStatus ?? { running: false, queued: [], compacting: false },
 	});
 	return point?.seq ?? 0;
 }
@@ -338,7 +331,7 @@ function doUnsubscribe(conn: Connection, sessionId: string, options?: { quiet?: 
 	conn.following.delete(sessionId);
 
 	// The agent may already be gone (idle-disposed); detaching is then moot.
-	const live = getLoaded(sessionId);
+	const live = backend().getLoaded(sessionId);
 	if (live) unsubscribe(live, listener);
 
 	if (!options?.quiet) send(conn.socket, { t: "unsubscribed", sessionId });

@@ -4,8 +4,8 @@ import { test } from "node:test";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { itemsFromEntries, MAX_TEXT_BYTES } from "./items.ts";
-import type { Item } from "./protocol.ts";
-import { parseRef } from "./refs.ts";
+import type { Item } from "../../protocol.ts";
+import { parseRef } from "../../refs.ts";
 
 /** Session entries are structurally varied; the builder takes them as they come. */
 function entries(...raw: unknown[]): SessionEntry[] {

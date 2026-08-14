@@ -1,4 +1,4 @@
-import type { Mutation } from "./translate.ts";
+import type { Mutation } from "./types.ts";
 
 /**
  * Batch mutations so one flush becomes one WebSocket frame per growing field.

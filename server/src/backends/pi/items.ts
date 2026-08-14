@@ -1,7 +1,10 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
-import type { Blob, Item, Text, ToolDiff, Usage } from "./protocol.ts";
-import { type FullPart, makeRef } from "./refs.ts";
+import type { Blob, Item, Text, ToolDiff, Usage } from "../../protocol.ts";
+import { makeRef } from "../../refs.ts";
+import { clamp, clampThinking, MAX_TEXT_BYTES } from "../../shorten.ts";
+
+export { clamp, cutToBytes, MAX_TEXT_BYTES } from "../../shorten.ts";
 
 /**
  * Session entries → the item list the client renders.
@@ -16,12 +19,6 @@ import { type FullPart, makeRef } from "./refs.ts";
  * collapsed row, recognising an edit call as a diff, and shortening anything
  * oversized. The client no longer knows a single one of pi's conventions.
  */
-
-/** Text longer than this is cut. Above ordinary tool output, well under a phone-sized payload. */
-export const MAX_TEXT_BYTES = 8 * 1024;
-
-/** Thinking is collapsed by default in the UI, so only a teaser travels. */
-const THINKING_PREVIEW_CHARS = 200;
 
 /**
  * Arguments worth showing on a collapsed tool row. A path or a command says far
@@ -301,32 +298,6 @@ export function resultFields(
 		isError: message.isError === true,
 		hasImage,
 	};
-}
-
-/* ---------------- shortening ---------------- */
-
-/** Cut `value` to the byte budget, attaching a ref for the rest when it did not fit. */
-export function clamp(value: string, entryId: string, part: FullPart, index?: number): Text {
-	const bytes = Buffer.byteLength(value);
-	if (bytes <= MAX_TEXT_BYTES) return { s: value };
-	return { s: cutToBytes(value, MAX_TEXT_BYTES), more: { ref: makeRef(entryId, part, index), bytes } };
-}
-
-function clampThinking(value: string, entryId: string, index: number): Text {
-	if (value.length <= THINKING_PREVIEW_CHARS) return { s: value };
-	return {
-		s: value.slice(0, THINKING_PREVIEW_CHARS),
-		more: { ref: makeRef(entryId, "thinking", index), bytes: Buffer.byteLength(value) },
-	};
-}
-
-/** Cut to a byte budget without splitting a multi-byte character. */
-export function cutToBytes(text: string, maxBytes: number): string {
-	const buf = Buffer.from(text, "utf8");
-	if (buf.length <= maxBytes) return text;
-	// `toString` on a slice ending mid-character yields U+FFFD; drop it.
-	const cut = buf.subarray(0, maxBytes).toString("utf8");
-	return cut.endsWith("�") ? cut.slice(0, -1) : cut;
 }
 
 /* ---------------- field helpers ---------------- */

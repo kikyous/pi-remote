@@ -2,11 +2,11 @@ import { basename } from "node:path";
 
 import { estimateTokens, type SessionEntry } from "@earendil-works/pi-coding-agent";
 
-import { HttpError } from "./http.ts";
-import type { ItemPageDto, ProjectDto, SessionDetailDto, SessionSummaryDto } from "./protocol.ts";
-import { extractFullPart, parseRef } from "./refs.ts";
-import { getModel } from "./sessions/model.ts";
-import { idOfPath, knows, type Located, locate, type SessionSummary, summaries, summaryOf } from "./sessions/scan.ts";
+import { HttpError } from "../../http.ts";
+import type { ItemPageDto, ProjectDto, SessionDetailDto, SessionSummaryDto } from "../../protocol.ts";
+import { extractFullPart, parseRef } from "../../refs.ts";
+import { getModel } from "./model.ts";
+import { idOfPath, knows, type Located, locate, type SessionSummary, summaries, summaryOf } from "./scan.ts";
 
 /**
  * Read-only view over `~/.pi/agent/sessions`.
@@ -21,7 +21,7 @@ import { idOfPath, knows, type Located, locate, type SessionSummary, summaries, 
  * onto the wire types.
  */
 
-export { dropPending as dropPendingSession, registerPending as registerSession } from "./sessions/scan.ts";
+export { dropPending as dropPendingSession, registerPending as registerSession } from "./scan.ts";
 
 /** Resolve a session id to its file, or 404. */
 export async function requireLocated(id: string): Promise<Located> {

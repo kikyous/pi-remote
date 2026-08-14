@@ -1,8 +1,9 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 
+import type { SessionPatch } from "../../backend.ts";
 import { acquire, getLoaded, publishAppendedSince, withPromptLock } from "./agent-pool.ts";
-import { HttpError } from "./http.ts";
+import { HttpError } from "../../http.ts";
 import {
 	type ContextUsageDto,
 	type ModelDto,
@@ -12,7 +13,7 @@ import {
 	type SessionStatus,
 	THINKING_LEVELS,
 	type ThinkingLevel,
-} from "./protocol.ts";
+} from "../../protocol.ts";
 import { type LiveSessionState, estimateSessionTokens } from "./store.ts";
 
 /** Shown for a model whose session is not loaded, so exact support is unknown. */
@@ -172,13 +173,6 @@ export async function abortSession(sessionId: string): Promise<{ aborted: boolea
 	if (!live || !live.session.isStreaming) return { aborted: false };
 	await live.session.abort();
 	return { aborted: true };
-}
-
-export interface SessionPatch {
-	provider?: string;
-	modelId?: string;
-	thinkingLevel?: string;
-	name?: string;
 }
 
 /** How long the title model may take before we give up. */

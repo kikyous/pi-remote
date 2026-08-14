@@ -8,7 +8,8 @@ import { join } from "node:path";
 import WebSocket from "ws";
 
 const TOKEN = readFileSync(join(homedir(), ".pi", "remote", "token"), "utf8").trim();
-const BASE = "http://127.0.0.1:30150/api/v1";
+const PORT = process.env.PI_REMOTE_PORT ?? "30150";
+const BASE = `http://127.0.0.1:${PORT}/api/v1`;
 const CWD = join(homedir(), "pi-remote-e2e");
 mkdirSync(CWD, { recursive: true });
 
@@ -30,7 +31,7 @@ const must = async (path, init) => {
 };
 
 function connect(onEvent) {
-  const ws = new WebSocket(`ws://127.0.0.1:30150/ws?token=${encodeURIComponent(TOKEN)}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(TOKEN)}`);
   ws.on("message", (raw) => onEvent(JSON.parse(raw.toString())));
   return new Promise((resolve) => ws.once("open", () => resolve(ws)));
 }
