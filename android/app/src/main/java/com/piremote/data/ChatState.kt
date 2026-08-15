@@ -33,6 +33,14 @@ data class ChatState(
     val busyPrompt: BusyPrompt? = null,
     /** True while the model is deriving a session title. */
     val generatingTitle: Boolean = false,
+    /**
+     * True while a compaction *this device* asked for is in flight.
+     *
+     * Distinct from `status.compacting`, which the server pushes once compaction
+     * actually starts: this one flips on the tap, so the button reacts without
+     * waiting for the round trip, and covers every phone watching the session.
+     */
+    val compacting: Boolean = false,
     /** Expanded originals, keyed by the `more` handle that fetched them. */
     val expanded: Map<String, String> = emptyMap(),
 ) {

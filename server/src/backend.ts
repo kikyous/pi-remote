@@ -1,5 +1,6 @@
 import type { LiveSession } from "./live/hub.ts";
 import type {
+	CompactResultDto,
 	ItemPageDto,
 	ModelsResponseDto,
 	ProjectDto,
@@ -106,6 +107,14 @@ export interface AgentBackend {
 	updateSession(sessionId: string, patch: SessionPatch): Promise<void>;
 	/** Optional capability: throw `HttpError(501)` when the agent cannot do it. */
 	generateTitle(sessionId: string): Promise<void>;
+	/**
+	 * Summarize the conversation so far and carry on from that summary.
+	 *
+	 * Optional too, but by being absent rather than by throwing: a backend with
+	 * no notion of compaction implements nothing and the route answers 501 for
+	 * it. The `compacting` flag in [SessionStatus] is what reports progress.
+	 */
+	compact?(sessionId: string): Promise<CompactResultDto>;
 
 	/* ── live sessions ─────────────────────────────────────────────────────── */
 

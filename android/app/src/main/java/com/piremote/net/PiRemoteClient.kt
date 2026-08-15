@@ -101,6 +101,16 @@ class PiRemoteClient(
     /** Have the model derive a title from the conversation; answers with the new detail. */
     suspend fun generateTitle(id: String): SessionDetailDto = post("sessions/$id/title", "{}")
 
+    /**
+     * Summarize this session's context into a compaction entry.
+     *
+     * The model reads the whole branch first, which on a long session takes well
+     * past the shared 30s read timeout — so this one call gets its own, or the
+     * phone would report a failure while the PC is still summarizing.
+     */
+    suspend fun compact(id: String): CompactResultDto =
+        post("sessions/$id/compact", "{}", readTimeoutSeconds = COMPACT_READ_TIMEOUT_S)
+
     /** Delete a single session (fails with 409 if it has forked children). */
     suspend fun deleteSession(id: String): DeleteResultDto = delete("sessions/$id")
 
@@ -162,8 +172,8 @@ class PiRemoteClient(
     private suspend inline fun <reified T> get(path: String): T =
         request(Request.Builder().url(url(path)).get())
 
-    private suspend inline fun <reified T> post(path: String, body: String): T =
-        request(Request.Builder().url(url(path)).post(body.toRequestBody(JSON_MEDIA)))
+    private suspend inline fun <reified T> post(path: String, body: String, readTimeoutSeconds: Long = 0): T =
+        request(Request.Builder().url(url(path)).post(body.toRequestBody(JSON_MEDIA)), readTimeoutSeconds)
 
     private suspend inline fun <reified T> patch(path: String, body: String): T =
         request(Request.Builder().url(url(path)).patch(body.toRequestBody(JSON_MEDIA)))
@@ -171,16 +181,25 @@ class PiRemoteClient(
     private suspend inline fun <reified T> delete(path: String): T =
         request(Request.Builder().url(url(path)).delete())
 
-    private suspend inline fun <reified T> request(builder: Request.Builder): T {
-        val text = execute(builder.header("Authorization", "Bearer $token").build())
+    private suspend inline fun <reified T> request(builder: Request.Builder, readTimeoutSeconds: Long = 0): T {
+        val text = execute(builder.header("Authorization", "Bearer $token").build(), readTimeoutSeconds)
         return withContext(Dispatchers.Default) { json.decodeFromString(text) }
     }
 
     private fun url(path: String) = "${baseUrl.trimEnd('/')}/api/v1/$path"
 
-    /** Runs the call off the main thread and converts error bodies to [ApiException]. */
-    private suspend fun execute(request: Request): String = suspendCancellableCoroutine { cont ->
-        val call = http.newCall(request)
+    /**
+     * Runs the call off the main thread and converts error bodies to [ApiException].
+     *
+     * @param readTimeoutSeconds Overrides the shared 30s read timeout for this one
+     *   call. `newBuilder()` keeps the connection pool and dispatcher, so the
+     *   derived client costs nothing beyond the object itself.
+     */
+    private suspend fun execute(request: Request, readTimeoutSeconds: Long = 0): String = suspendCancellableCoroutine { cont ->
+        val client =
+            if (readTimeoutSeconds > 0) http.newBuilder().readTimeout(readTimeoutSeconds, TimeUnit.SECONDS).build()
+            else http
+        val call = client.newCall(request)
         cont.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -238,6 +257,9 @@ class PiRemoteClient(
 
     private companion object {
         val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+
+        /** Matches the server's own compaction deadline, with room for the round trip. */
+        const val COMPACT_READ_TIMEOUT_S = 310L
     }
 }
 

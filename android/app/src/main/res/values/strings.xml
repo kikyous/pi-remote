@@ -16,6 +16,8 @@
     <string name="new_session">New session</string>
     <string name="generate_title">Generate title</string>
     <string name="generating">Generating…</string>
+    <string name="compact_context">Compact context</string>
+    <string name="compacting">Compacting…</string>
     <string name="expand">Expand</string>
     <string name="collapse">Collapse</string>
     <string name="selected">Selected</string>
@@ -35,6 +37,7 @@
     <string name="chat_attached_image">Attached image</string>
     <string name="chat_remove_attachment">Remove attachment</string>
     <string name="chat_title_generated">Generated title: %1$s</string>
+    <string name="chat_compacted">Context compacted: %1$s → %2$s tokens</string>
     <string name="chat_image_read_failed">Failed to read image</string>
     <string name="chat_session_running"> · Running</string>
     <string name="chat_git_changes">Git changes</string>
@@ -111,6 +114,7 @@
     <!-- Data-layer errors -->
     <string name="err_set_title">Failed to set title</string>
     <string name="err_generate_title">Failed to generate title</string>
+    <string name="err_compact">Failed to compact context</string>
     <string name="err_abort">Failed to abort</string>
     <string name="err_unknown">Unknown error</string>
     <string name="err_unreachable">unreachable</string>

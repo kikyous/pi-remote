@@ -16,6 +16,8 @@
     <string name="new_session">新建会话</string>
     <string name="generate_title">生成标题</string>
     <string name="generating">生成中…</string>
+    <string name="compact_context">压缩上下文</string>
+    <string name="compacting">压缩中…</string>
     <string name="expand">展开</string>
     <string name="collapse">收起</string>
     <string name="selected">已选</string>
@@ -35,6 +37,7 @@
     <string name="chat_attached_image">附件图片</string>
     <string name="chat_remove_attachment">移除附件</string>
     <string name="chat_title_generated">已生成标题：%1$s</string>
+    <string name="chat_compacted">上下文已压缩：%1$s → %2$s tokens</string>
     <string name="chat_image_read_failed">读取图片失败</string>
     <string name="chat_session_running"> · 运行中</string>
     <string name="chat_git_changes">Git 改动</string>
@@ -111,6 +114,7 @@
     <!-- Data-layer errors -->
     <string name="err_set_title">设置标题失败</string>
     <string name="err_generate_title">生成标题失败</string>
+    <string name="err_compact">压缩上下文失败</string>
     <string name="err_abort">中止失败</string>
     <string name="err_unknown">未知错误</string>
     <string name="err_unreachable">无法访问</string>

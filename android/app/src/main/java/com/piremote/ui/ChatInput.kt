@@ -40,6 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Psychology
@@ -124,6 +125,8 @@ fun ChatInput(
     onNewSession: () -> Unit,
     onGenerateTitle: () -> Unit,
     generatingTitle: Boolean = false,
+    onCompact: () -> Unit,
+    compacting: Boolean = false,
     onSendImage: (List<android.net.Uri>) -> Unit,
     attachments: List<PromptImage>,
     onRemoveAttachment: (Int) -> Unit,
@@ -404,6 +407,7 @@ fun ChatInput(
                 if (panelHeightPx > 100) panelHeightPx else with(density) { 300.dp.toPx() }.toInt()
             MorePanel(
                 generatingTitle = generatingTitle,
+                compacting = compacting,
                 onPickModel = onPickModel,
                 onPickThinking = onPickThinking,
                 onNewSession = {
@@ -412,6 +416,7 @@ fun ChatInput(
                     onNewSession()
                 },
                 onGenerateTitle = onGenerateTitle,
+                onCompact = onCompact,
                 onPickImages = {
                     pickImages.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
@@ -427,10 +432,12 @@ fun ChatInput(
 @Composable
 private fun MorePanel(
     generatingTitle: Boolean,
+    compacting: Boolean,
     onPickModel: () -> Unit,
     onPickThinking: (() -> Unit)?,
     onNewSession: () -> Unit,
     onGenerateTitle: () -> Unit,
+    onCompact: () -> Unit,
     onPickImages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -438,6 +445,7 @@ private fun MorePanel(
         val label: String,
         val icon: ImageVector,
         val action: () -> Unit,
+        /** Swaps the icon for a spinner and blocks the tap while the work runs. */
         val generating: Boolean = false,
     )
 
@@ -455,6 +463,15 @@ private fun MorePanel(
             ),
         )
         add(Cell(stringResource(R.string.chat_send_image), Icons.Outlined.Image, onPickImages))
+        add(
+            Cell(
+                if (compacting) stringResource(R.string.compacting)
+                else stringResource(R.string.compact_context),
+                Icons.Outlined.Compress,
+                { if (!compacting) onCompact() },
+                generating = compacting,
+            ),
+        )
     }
 
     // The grid is centered as a whole; items flow left-to-right inside fixed

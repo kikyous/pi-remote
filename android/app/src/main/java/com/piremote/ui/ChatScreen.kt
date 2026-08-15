@@ -288,6 +288,22 @@ fun ChatScreen(
                         }
                     },
                     generatingTitle = state.generatingTitle,
+                    onCompact = {
+                        store.compact { result, err ->
+                            scope.launch {
+                                snackbar.showSnackbar(
+                                    err ?: ctx.getString(
+                                        R.string.chat_compacted,
+                                        formatTokens(result?.tokensBefore),
+                                        formatTokens(result?.tokensAfter),
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                    // The server's own flag covers a compaction another device
+                    // started, or one pi kicked off on its own.
+                    compacting = state.compacting || state.status.compacting,
                     onSendImage = { uris ->
                         // 方案 A：先挂到附件预览条，配文字后一起发送。
                         scope.launch {
@@ -452,6 +468,16 @@ private fun groupRows(items: List<Item>): List<ChatRow> {
 private fun ChatRow.isEmptyPending(): Boolean {
     val assistant = lead as? Item.Assistant ?: return false
     return assistant.pending && assistant.text.s.isBlank() && assistant.thinking == null && tools.isEmpty()
+}
+
+/**
+ * A token count for the compaction snackbar: `18.4k`, `740`, or `?` when the
+ * agent reported no estimate.
+ */
+private fun formatTokens(tokens: Int?): String = when {
+    tokens == null -> "?"
+    tokens >= 1000 -> "%.1fk".format(tokens / 1000.0)
+    else -> tokens.toString()
 }
 
 /**

@@ -128,6 +128,17 @@ async function main(): Promise<void> {
 		return backend().getDetail(ctx.params.id!);
 	});
 
+	// Summarize the conversation into a compaction entry. Slow — the model reads
+	// the whole branch — so the app gives this call a timeout of its own; the
+	// `compacting` flag on the status push is what the screen shows meanwhile.
+	router.post(`${API_PREFIX}/sessions/:id/compact`, (ctx) => {
+		const agent = backend();
+		if (!agent.compact) {
+			throw new HttpError(501, "This agent cannot compact context", "compact_unsupported");
+		}
+		return agent.compact(ctx.params.id!);
+	});
+
 	router.patch(`${API_PREFIX}/sessions/:id`, async (ctx) => {
 		const body = asRecord(ctx.body);
 		const patch: SessionPatch = {};

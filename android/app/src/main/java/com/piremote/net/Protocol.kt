@@ -318,6 +318,17 @@ data class PromptImage(val data: String, val mimeType: String)
 @Serializable
 data class AbortResultDto(val aborted: Boolean = false)
 
+/**
+ * Response of `POST /sessions/:id/compact`: how much context the summary
+ * reclaimed. The "Context compacted" notice and the refreshed context bar come
+ * over the push stream, so these two numbers are all the call itself returns.
+ */
+@Serializable
+data class CompactResultDto(
+    val tokensBefore: Int = 0,
+    val tokensAfter: Int? = null,
+)
+
 @Serializable
 data class NewSessionDto(val id: String)
 

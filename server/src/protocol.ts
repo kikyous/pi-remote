@@ -307,6 +307,20 @@ export interface PromptResultDto {
 	queued: boolean;
 }
 
+/**
+ * What a manual compaction achieved.
+ *
+ * Only the two numbers: everything else the client needs — the "Context
+ * compacted" notice and the refreshed context bar — already arrives on the push
+ * stream, so this response exists to say *how much* was reclaimed.
+ */
+export interface CompactResultDto {
+	/** Tokens the branch used before the summary replaced it. */
+	tokensBefore: number;
+	/** Estimated tokens afterwards; null when the agent did not report one. */
+	tokensAfter: number | null;
+}
+
 /** An image attachment for a prompt, base64-encoded on the wire. */
 export interface PromptImageDto {
 	type: "image";

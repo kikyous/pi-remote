@@ -12,6 +12,7 @@ import {
 } from "./agent-pool.ts";
 import {
 	abortSession,
+	compactSession,
 	generateSessionTitle,
 	idleStatus,
 	listModels,
@@ -92,6 +93,7 @@ export function createPiBackend(): AgentBackend {
 		generateTitle: async (sessionId: string): Promise<void> => {
 			await generateSessionTitle(sessionId);
 		},
+		compact: compactSession,
 
 		acquire: (sessionId: string) => acquire(sessionId),
 		getLoaded,

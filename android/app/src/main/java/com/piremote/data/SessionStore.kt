@@ -2,6 +2,7 @@ package com.piremote.data
 
 import com.piremote.R
 import com.piremote.net.ApiException
+import com.piremote.net.CompactResultDto
 import com.piremote.net.PiRemoteClient
 import com.piremote.net.PromptImage
 import com.piremote.net.Push
@@ -231,6 +232,29 @@ class SessionStore(
             } catch (e: Exception) {
                 _state.update { it.copy(generatingTitle = false) }
                 onDone(null, e.message ?: context.getString(R.string.err_generate_title))
+            }
+        }
+    }
+
+    /**
+     * Summarize the conversation into a compaction entry; [onDone] receives
+     * `(result, error)` — one of them null.
+     *
+     * Nothing is inserted into [ChatState.items] on success: the server publishes
+     * the "Context compacted" notice and the new context estimate on the push
+     * stream, so every device watching the session sees the same thing.
+     */
+    fun compact(onDone: (CompactResultDto?, String?) -> Unit) {
+        if (_state.value.compacting) return
+        _state.update { it.copy(compacting = true) }
+        scope.launch {
+            try {
+                val result = client.compact(sessionId)
+                _state.update { it.copy(compacting = false) }
+                onDone(result, null)
+            } catch (e: Exception) {
+                _state.update { it.copy(compacting = false) }
+                onDone(null, e.message ?: context.getString(R.string.err_compact))
             }
         }
     }

@@ -5,6 +5,7 @@ import type { SessionPatch } from "../../backend.ts";
 import { acquire, getLoaded, publishAppendedSince, withPromptLock } from "./agent-pool.ts";
 import { HttpError } from "../../http.ts";
 import {
+	type CompactResultDto,
 	type ContextUsageDto,
 	type ModelDto,
 	type ModelsResponseDto,
@@ -173,6 +174,65 @@ export async function abortSession(sessionId: string): Promise<{ aborted: boolea
 	if (!live || !live.session.isStreaming) return { aborted: false };
 	await live.session.abort();
 	return { aborted: true };
+}
+
+/** How long the summarizing model may take before we give up. */
+const COMPACT_TIMEOUT_MS = 300_000;
+
+/** How long we wait for an in-flight run before refusing to compact. */
+const COMPACT_IDLE_WAIT_MS = 10_000;
+
+/**
+ * Replace the conversation so far with a model-written summary.
+ *
+ * A busy session is refused rather than compacted: `AgentSession.compact()`
+ * aborts whatever is running before it starts, and killing a turn the user is
+ * watching is not what tapping "compact" asks for. Same ten seconds of grace as
+ * the title path, for a run that is just finishing.
+ *
+ * Progress needs nothing from here — pi emits `compaction_start` /
+ * `compaction_end`, which the translator turns into the `compacting` flag and a
+ * fresh context estimate. The compaction *entry*, though, is appended with no
+ * SDK event at all, so it is published by hand exactly like a model change.
+ */
+export async function compactSession(sessionId: string): Promise<CompactResultDto> {
+	const live = await acquire(sessionId, true);
+
+	await withDeadline(
+		live.session.agent.waitForIdle(),
+		COMPACT_IDLE_WAIT_MS,
+		new HttpError(409, "Session is running, please try again later", "session_busy"),
+	);
+
+	const leafBefore = live.session.sessionManager.getLeafEntry();
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const result = await Promise.race([
+			live.session.compact(),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => {
+					live.session.abortCompaction();
+					reject(new HttpError(504, "Compaction timed out", "compact_timeout"));
+				}, COMPACT_TIMEOUT_MS);
+			}),
+		]);
+		publishAppendedSince(live, leafBefore);
+		return { tokensBefore: result.tokensBefore, tokensAfter: result.estimatedTokensAfter ?? null };
+	} catch (err) {
+		if (err instanceof HttpError) throw err;
+		// The SDK reports both refusals as plain Errors; they are ordinary answers
+		// ("there is nothing to compact"), not failures, so they get their own codes.
+		const message = err instanceof Error ? err.message : String(err);
+		if (/already compacted/i.test(message)) {
+			throw new HttpError(409, "Already compacted", "already_compacted");
+		}
+		if (/nothing to compact/i.test(message)) {
+			throw new HttpError(400, message, "nothing_to_compact");
+		}
+		throw new HttpError(502, message, "compact_failed");
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
 }
 
 /** How long the title model may take before we give up. */

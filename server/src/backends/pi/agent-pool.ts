@@ -351,7 +351,8 @@ function consume(live: LiveAgent, event: AgentSessionEvent): void {
  * Publish the notice(s) for entries pi appended without an SDK event.
  *
  * `setModel()` / `setThinkingLevel()` write model_change / thinking_level_change
- * entries but emit no AgentSessionEvent, and the whole live path is
+ * entries, and `compact()` writes a compaction entry, but none of the three
+ * emits an AgentSessionEvent, and the whole live path is
  * event-driven — so the app would otherwise only see the notice on the next
  * resync, which in practice means the reload triggered by the next message
  * (that reload happens because our own append never refreshed the file
@@ -369,7 +370,7 @@ export function publishAppendedSince(live: LiveAgent, before: SessionEntry | und
 	let entry = sm.getLeafEntry();
 	while (entry && entry.id !== before?.id && !seen.has(entry.id)) {
 		seen.add(entry.id);
-		if (entry.type === "model_change" || entry.type === "thinking_level_change") {
+		if (entry.type === "model_change" || entry.type === "thinking_level_change" || entry.type === "compaction") {
 			appended.push(entry);
 		}
 		entry = entry.parentId ? sm.getEntry(entry.parentId) : undefined;
