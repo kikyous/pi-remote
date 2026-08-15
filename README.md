@@ -24,6 +24,7 @@ A native **Android app (Kotlin + Jetpack Compose)** that talks to a featherweigh
 | ⏹️ **Interrupt & queue** | Stop a running agent with one tap — or send a follow-up that queues politely behind it (`steer` / `followUp`) |
 | 🆕 **Per-session model** | Each session picks its own model & thinking level independently, switchable mid-flight |
 | 🗜️ **Compact on demand** | Summarize a bloated context from the **+** menu and see how many tokens it freed |
+| 📊 **Session spend** | Messages, tokens and dollars for the whole session — one tap from the **+** menu |
 | 🖼️ **Image attachments** | Attach screenshots or photos to a prompt, preview the strip, and zoom into full-size results |
 | 🌿 **Git at a glance** | Uncommitted changes and commit history with per-file / per-commit diffs, rendered as adaptive tables |
 | 🔔 **Background agent** | Leave the app while the agent grinds — a completion notification taps you straight back into the session |

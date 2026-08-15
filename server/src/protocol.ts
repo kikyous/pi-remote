@@ -321,6 +321,46 @@ export interface CompactResultDto {
 	tokensAfter: number | null;
 }
 
+/** How many rows of each kind a session holds. */
+export interface MessageCountsDto {
+	user: number;
+	assistant: number;
+	/** Tool calls made, counted inside the assistant messages that made them. */
+	toolCalls: number;
+	toolResults: number;
+	/** Message entries of every role — tool calls are not entries of their own. */
+	total: number;
+}
+
+export interface TokenTotalsDto {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	total: number;
+}
+
+/**
+ * What a session has cost so far.
+ *
+ * Totals cover the **whole session file**, abandoned branches included, because
+ * the question this answers is what was spent — money does not come back when a
+ * branch is left behind. [context], by contrast, is about the active branch: it
+ * is the same number the header bar shows.
+ */
+export interface SessionStatsDto {
+	id: string;
+	/** Absolute path of the session file; it exists from the first append on. */
+	file: string;
+	/** User-defined display name (`/name`), if set. */
+	name?: string;
+	messages: MessageCountsDto;
+	tokens: TokenTotalsDto;
+	/** Total cost in dollars, cache reads included. */
+	cost: number;
+	context: ContextUsageDto;
+}
+
 /** An image attachment for a prompt, base64-encoded on the wire. */
 export interface PromptImageDto {
 	type: "image";

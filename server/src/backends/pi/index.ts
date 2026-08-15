@@ -22,6 +22,7 @@ import {
 } from "./commands.ts";
 import { deleteSession, deleteWorkspace } from "./delete.ts";
 import { setLiveSource } from "./model.ts";
+import { sessionStats } from "./stats.ts";
 import {
 	getDetail,
 	getFullByRef,
@@ -94,6 +95,7 @@ export function createPiBackend(): AgentBackend {
 			await generateSessionTitle(sessionId);
 		},
 		compact: compactSession,
+		stats: sessionStats,
 
 		acquire: (sessionId: string) => acquire(sessionId),
 		getLoaded,

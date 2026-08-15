@@ -82,6 +82,47 @@ test("entry() reaches entries by id, for /full", () => {
 	assert.equal(model.entry("no-such-entry"), undefined);
 });
 
+test("all() sees the abandoned branch the active path walks past", () => {
+	const located = writeSession("m6", ["root", "first try"]);
+	// A retry from the root: the leaf moves onto the new entry, and "first try"
+	// stays on file with nothing pointing at it.
+	append(located, "m6-retry", "m6-e0");
+
+	const model = getModel(located);
+	assert.ok(model);
+	assert.deepEqual(model.entries.map((e) => e.id), ["m6-e0", "m6-retry"], "the active branch skips the retry's sibling");
+	// What the abandoned turn cost is still spent, so the stats route counts it.
+	assert.deepEqual(model.all().map((e) => e.id), ["m6-e0", "m6-e1", "m6-retry"]);
+});
+
+test("branch() keeps the settings a compaction pruned out of the context view", () => {
+	// The shape a real session has: the model is recorded once at the very top,
+	// and a later compaction cuts everything before its summary out of context.
+	const path = join(root, "2026-08-12T00-00-00-000Z_m7.jsonl");
+	const at = "2026-08-12T00:00:00.000Z";
+	writeFileSync(
+		path,
+		`${[
+			JSON.stringify({ type: "session", version: 3, id: "m7", timestamp: at, cwd: CWD }),
+			JSON.stringify({ type: "model_change", id: "m7-model", parentId: null, timestamp: at, provider: "opencode-go", modelId: "deepseek-v4-flash" }),
+			JSON.stringify({ type: "message", id: "m7-old", parentId: "m7-model", timestamp: at, message: { role: "user", content: "before the summary" } }),
+			JSON.stringify({ type: "compaction", id: "m7-compaction", parentId: "m7-old", timestamp: at, summary: "…", firstKeptEntryId: "m7-kept", tokensBefore: 900 }),
+			JSON.stringify({ type: "message", id: "m7-kept", parentId: "m7-compaction", timestamp: at, message: { role: "user", content: "after the summary" } }),
+		].join("\n")}\n`,
+	);
+
+	const model = getModel({ id: "m7", path, cwd: CWD });
+	assert.ok(model);
+	assert.equal(
+		model.entries.some((e) => e.type === "model_change"),
+		false,
+		"the context view starts at the summary, so the model entry is gone from it",
+	);
+	// Which is why the detail reads settings off the whole path instead: without
+	// this, every compacted session would report no model and no context window.
+	assert.equal(model.branch().some((e) => e.type === "model_change"), true);
+});
+
 test("forgetModel drops the parse so a recreated file is not served stale", () => {
 	const located = writeSession("m4", ["original"]);
 	const first = getModel(located);
@@ -107,7 +148,13 @@ test("a loaded agent's tree outranks the file", () => {
 	];
 	setLiveSource((id) =>
 		id === "m5"
-			? { buildContextEntries: () => fake, getLeafId: () => "live-2", getEntry: (wanted) => fake.find((e) => e.id === wanted) }
+			? {
+					buildContextEntries: () => fake,
+					getEntries: () => fake,
+					getBranch: () => fake,
+					getLeafId: () => "live-2",
+					getEntry: (wanted) => fake.find((e) => e.id === wanted),
+				}
 			: undefined,
 	);
 

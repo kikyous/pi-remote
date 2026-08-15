@@ -40,6 +40,25 @@
     <string name="chat_compacted">Context compacted: %1$s → %2$s tokens</string>
     <string name="chat_image_read_failed">Failed to read image</string>
     <string name="chat_session_running"> · Running</string>
+    <!-- Session info sheet: what this session has spent -->
+    <string name="session_info">Session info</string>
+    <string name="session_info_name">Name</string>
+    <string name="session_info_file">File</string>
+    <string name="session_info_id">ID</string>
+    <string name="session_info_messages">Messages</string>
+    <string name="session_info_user">User</string>
+    <string name="session_info_assistant">Assistant</string>
+    <string name="session_info_tool_calls">Tool calls</string>
+    <string name="session_info_tool_results">Tool results</string>
+    <string name="session_info_total">Total</string>
+    <string name="session_info_tokens">Tokens</string>
+    <string name="session_info_input">Input</string>
+    <string name="session_info_output">Output</string>
+    <string name="session_info_cache_read">Cache read</string>
+    <string name="session_info_cache_write">Cache write</string>
+    <string name="session_info_spend">Spend</string>
+    <string name="session_info_cost">Cost</string>
+    <string name="session_info_context">Context</string>
     <string name="chat_git_changes">Git changes</string>
     <string name="chat_session_title">Session</string>
 
@@ -115,6 +134,7 @@
     <string name="err_set_title">Failed to set title</string>
     <string name="err_generate_title">Failed to generate title</string>
     <string name="err_compact">Failed to compact context</string>
+    <string name="err_load_stats">Failed to load session info</string>
     <string name="err_abort">Failed to abort</string>
     <string name="err_unknown">Unknown error</string>
     <string name="err_unreachable">unreachable</string>

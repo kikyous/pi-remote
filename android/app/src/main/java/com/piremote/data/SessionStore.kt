@@ -259,6 +259,15 @@ class SessionStore(
         }
     }
 
+    /**
+     * This session's spend totals, read on demand.
+     *
+     * Deliberately not part of [ChatState]: no push carries these numbers, and
+     * the info sheet is the only thing that ever asks. Failures surface to the
+     * caller, which shows them inside the sheet rather than as a snackbar behind it.
+     */
+    suspend fun stats(): com.piremote.net.SessionStatsDto = client.stats(sessionId)
+
     private fun patchSession(call: suspend () -> com.piremote.net.SessionDetailDto) {
         scope.launch {
             try {

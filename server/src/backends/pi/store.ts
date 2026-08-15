@@ -121,7 +121,7 @@ export async function getDetail(id: string): Promise<SessionDetailDto> {
 		cwd: info.cwd,
 		...(info.name ? { name: info.name } : {}),
 		firstMessage: info.firstMessage,
-		...readSettings(model?.entries ?? []),
+		...readSettings(model?.branch() ?? []),
 		...(live
 			? {
 					model: live.model,
@@ -217,6 +217,12 @@ export async function getFullByRef(id: string, ref: string): Promise<{ content: 
  * Recover the active model and thinking level by replaying the change entries
  * on the branch. Last one wins; absent means "whatever pi defaults to", which
  * the client renders as unset.
+ *
+ * Takes the *unpruned* branch (`model.branch()`), and falls back to the model an
+ * assistant message was answered by — both because that is what pi's own
+ * `getSessionContextSettings` does. Reading the compaction-pruned context view
+ * instead loses the settings of every compacted session: `model_change` is
+ * written once, at the top of the file, and the summary cuts it away.
  */
 function readSettings(entries: SessionEntry[]): Pick<SessionDetailDto, "model" | "thinkingLevel"> {
 	let model: SessionDetailDto["model"] = null;
@@ -226,6 +232,11 @@ function readSettings(entries: SessionEntry[]): Pick<SessionDetailDto, "model" |
 			model = { provider: entry.provider, modelId: entry.modelId };
 		} else if (entry.type === "thinking_level_change") {
 			thinkingLevel = entry.thinkingLevel;
+		} else if (entry.type === "message" && entry.message.role === "assistant") {
+			const answered = entry.message as { provider?: string; model?: string };
+			if (answered.provider && answered.model) {
+				model = { provider: answered.provider, modelId: answered.model };
+			}
 		}
 	}
 	return { model, thinkingLevel };

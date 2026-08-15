@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.SmartToy
@@ -127,6 +128,7 @@ fun ChatInput(
     generatingTitle: Boolean = false,
     onCompact: () -> Unit,
     compacting: Boolean = false,
+    onSessionInfo: () -> Unit,
     onSendImage: (List<android.net.Uri>) -> Unit,
     attachments: List<PromptImage>,
     onRemoveAttachment: (Int) -> Unit,
@@ -417,6 +419,7 @@ fun ChatInput(
                 },
                 onGenerateTitle = onGenerateTitle,
                 onCompact = onCompact,
+                onSessionInfo = onSessionInfo,
                 onPickImages = {
                     pickImages.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
@@ -438,6 +441,7 @@ private fun MorePanel(
     onNewSession: () -> Unit,
     onGenerateTitle: () -> Unit,
     onCompact: () -> Unit,
+    onSessionInfo: () -> Unit,
     onPickImages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -472,6 +476,7 @@ private fun MorePanel(
                 generating = compacting,
             ),
         )
+        add(Cell(stringResource(R.string.session_info), Icons.Outlined.Info, onSessionInfo))
     }
 
     // The grid is centered as a whole; items flow left-to-right inside fixed

@@ -121,9 +121,9 @@ data class UsageDto(
     /** "2,365 in · 89 out · 131,072 cache R · $0.0004" — the pi TUI style. */
     val summary: String
         get() = buildList {
-            add("${formatCount(input)} in")
-            add("${formatCount(output)} out")
-            if (cacheRead > 0) add("${formatCount(cacheRead)} cache R")
+            add("${formatCount(input.toLong())} in")
+            add("${formatCount(output.toLong())} out")
+            if (cacheRead > 0) add("${formatCount(cacheRead.toLong())} cache R")
             add(formatCost(cost))
         }.joinToString(" · ")
 }
@@ -212,9 +212,10 @@ data class ItemPageDto(
     val oldest: String? = null,
 )
 
-private fun formatCount(n: Int): String = String.format("%,d", n)
+/** Thousands separators — shared with the session info sheet. */
+internal fun formatCount(n: Long): String = String.format("%,d", n)
 
-private fun formatCost(cost: Double): String {
+internal fun formatCost(cost: Double): String {
     val text = when {
         cost >= 1.0 -> "%.2f".format(cost)
         cost >= 0.0001 -> "%.4f".format(cost)
@@ -327,6 +328,46 @@ data class AbortResultDto(val aborted: Boolean = false)
 data class CompactResultDto(
     val tokensBefore: Int = 0,
     val tokensAfter: Int? = null,
+)
+
+/** How many rows of each kind a session holds. */
+@Serializable
+data class MessageCountsDto(
+    val user: Int = 0,
+    val assistant: Int = 0,
+    /** Tool calls made — they live inside assistant messages, so not in [total]. */
+    val toolCalls: Int = 0,
+    val toolResults: Int = 0,
+    val total: Int = 0,
+)
+
+/** Token totals are [Long]: a long-lived session reads cache in the millions. */
+@Serializable
+data class TokenTotalsDto(
+    val input: Long = 0,
+    val output: Long = 0,
+    val cacheRead: Long = 0,
+    val cacheWrite: Long = 0,
+    val total: Long = 0,
+)
+
+/**
+ * Response of `GET /sessions/:id/stats`: what this session has spent.
+ *
+ * The totals cover the whole session file, abandoned branches included — the
+ * spending happened either way. [context] is the active branch instead, the same
+ * number the header bar shows.
+ */
+@Serializable
+data class SessionStatsDto(
+    val id: String = "",
+    val file: String = "",
+    val name: String? = null,
+    val messages: MessageCountsDto = MessageCountsDto(),
+    val tokens: TokenTotalsDto = TokenTotalsDto(),
+    /** Total cost in dollars, cache reads included. */
+    val cost: Double = 0.0,
+    val context: ContextUsageDto = ContextUsageDto(),
 )
 
 @Serializable

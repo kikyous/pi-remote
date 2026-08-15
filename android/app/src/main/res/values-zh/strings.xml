@@ -40,6 +40,25 @@
     <string name="chat_compacted">上下文已压缩：%1$s → %2$s tokens</string>
     <string name="chat_image_read_failed">读取图片失败</string>
     <string name="chat_session_running"> · 运行中</string>
+    <!-- 会话信息面板：这个会话花了多少 -->
+    <string name="session_info">会话信息</string>
+    <string name="session_info_name">名称</string>
+    <string name="session_info_file">文件</string>
+    <string name="session_info_id">ID</string>
+    <string name="session_info_messages">消息</string>
+    <string name="session_info_user">用户</string>
+    <string name="session_info_assistant">助手</string>
+    <string name="session_info_tool_calls">工具调用</string>
+    <string name="session_info_tool_results">工具结果</string>
+    <string name="session_info_total">总计</string>
+    <string name="session_info_tokens">Token</string>
+    <string name="session_info_input">输入</string>
+    <string name="session_info_output">输出</string>
+    <string name="session_info_cache_read">缓存读取</string>
+    <string name="session_info_cache_write">缓存写入</string>
+    <string name="session_info_spend">花费</string>
+    <string name="session_info_cost">费用</string>
+    <string name="session_info_context">上下文</string>
     <string name="chat_git_changes">Git 改动</string>
     <string name="chat_session_title">会话</string>
 
@@ -115,6 +134,7 @@
     <string name="err_set_title">设置标题失败</string>
     <string name="err_generate_title">生成标题失败</string>
     <string name="err_compact">压缩上下文失败</string>
+    <string name="err_load_stats">读取会话信息失败</string>
     <string name="err_abort">中止失败</string>
     <string name="err_unknown">未知错误</string>
     <string name="err_unreachable">无法访问</string>

@@ -10,11 +10,15 @@ import type { Located } from "./scan.ts";
  * The slice of `SessionManager` this module reads.
  *
  * Structural on purpose: the SDK declares `ReadonlySessionManager` but does not
- * re-export it from the package root, and three methods is a smaller contract
+ * re-export it from the package root, and four methods is a smaller contract
  * to depend on anyway.
  */
 export interface EntryTree {
 	buildContextEntries(): SessionEntry[];
+	/** Every entry in the file, abandoned branches included. */
+	getEntries(): SessionEntry[];
+	/** Leaf → root in path order, with nothing filtered out. */
+	getBranch(fromId?: string): SessionEntry[];
 	getLeafId(): string | null;
 	getEntry(id: string): SessionEntry | undefined;
 }
@@ -42,6 +46,23 @@ export interface SessionModel {
 	 * abandoned branches.
 	 */
 	entries: SessionEntry[];
+	/**
+	 * The whole tree, for questions the active branch cannot answer.
+	 *
+	 * Spending is one: a turn on a branch the user walked away from still cost
+	 * what it cost. Built on demand — only the stats route asks.
+	 */
+	all(): SessionEntry[];
+	/**
+	 * The same branch [entries] shows, but before compaction pruned it.
+	 *
+	 * Which model and thinking level a session is on is recovered from here, not
+	 * from [entries]: a compaction drops everything before its summary, and the
+	 * `model_change` entry usually sits at the very top of the file — so reading
+	 * settings off the context view loses them the moment a session is compacted.
+	 * pi resolves its own settings from this path too.
+	 */
+	branch(): SessionEntry[];
 	leafId: string | null;
 	/** Raw (un-shortened) entry by id, for `/full`. */
 	entry(id: string): SessionEntry | undefined;
@@ -128,8 +149,12 @@ export function forgetModel(path: string): void {
 function fromManager(sm: EntryTree): SessionModel {
 	const entries = sm.buildContextEntries();
 	let items: Item[] | undefined;
+	let all: SessionEntry[] | undefined;
+	let branch: SessionEntry[] | undefined;
 	return {
 		entries,
+		all: () => (all ??= sm.getEntries()),
+		branch: () => (branch ??= sm.getBranch()),
 		leafId: sm.getLeafId(),
 		entry: (id) => sm.getEntry(id),
 		items: () => (items ??= itemsFromEntries(entries)),

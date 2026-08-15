@@ -7,6 +7,7 @@ import type {
 	PromptImageDto,
 	PromptResultDto,
 	SessionDetailDto,
+	SessionStatsDto,
 	SessionStatus,
 	SessionSummaryDto,
 } from "./protocol.ts";
@@ -115,6 +116,14 @@ export interface AgentBackend {
 	 * it. The `compacting` flag in [SessionStatus] is what reports progress.
 	 */
 	compact?(sessionId: string): Promise<CompactResultDto>;
+	/**
+	 * Everything the session has spent: messages, tokens, dollars.
+	 *
+	 * Optional the same way [compact] is — absent means the route answers 501 —
+	 * because a backend that does not keep per-turn usage on file has no honest
+	 * total to report.
+	 */
+	stats?(sessionId: string): Promise<SessionStatsDto>;
 
 	/* ── live sessions ─────────────────────────────────────────────────────── */
 

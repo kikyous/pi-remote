@@ -64,6 +64,14 @@ class PiRemoteClient(
 
     suspend fun models(): ModelsResponseDto = get("models")
 
+    /**
+     * What this session has spent: messages, tokens, dollars.
+     *
+     * Read off the session file, so asking costs no agent — which is why it is a
+     * plain GET rather than something the push stream has to carry.
+     */
+    suspend fun stats(id: String): SessionStatsDto = get("sessions/$id/stats")
+
     /* ---------------- git (read-only) ---------------- */
 
     suspend fun gitStatus(cwd: String): GitStatusDto =

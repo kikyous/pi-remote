@@ -264,6 +264,7 @@ fun ChatScreen(
                     onDismiss = { sheet = null },
                     onPickModel = { store.setModel(it.provider, it.id) },
                     onPickThinking = store::setThinkingLevel,
+                    loadStats = store::stats,
                 )
                 ChatInput(
                     draft = store.draft,
@@ -304,6 +305,7 @@ fun ChatScreen(
                     // The server's own flag covers a compaction another device
                     // started, or one pi kicked off on its own.
                     compacting = state.compacting || state.status.compacting,
+                    onSessionInfo = { sheet = SessionSheet.Info },
                     onSendImage = { uris ->
                         // 方案 A：先挂到附件预览条，配文字后一起发送。
                         scope.launch {

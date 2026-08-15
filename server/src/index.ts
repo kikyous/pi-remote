@@ -69,6 +69,16 @@ async function main(): Promise<void> {
 		return backend().getFullByRef(ctx.params.id!, ref);
 	});
 
+	// What this session has spent: messages, tokens, dollars. Read-only and
+	// agent-free, so opening the info sheet costs no more than a page of history.
+	router.get(`${API_PREFIX}/sessions/:id/stats`, (ctx) => {
+		const agent = backend();
+		if (!agent.stats) {
+			throw new HttpError(501, "This agent does not report session stats", "stats_unsupported");
+		}
+		return agent.stats(ctx.params.id!);
+	});
+
 	router.get(`${API_PREFIX}/models`, () => backend().listModels());
 
 	// Read-only git queries for the repo a session lives in.
