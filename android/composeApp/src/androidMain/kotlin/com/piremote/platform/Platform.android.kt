@@ -38,7 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.piremote.R
+import com.piremote.cmp.R
 import com.piremote.data.Connection
 import com.piremote.data.SettingsStore
 import com.piremote.data.normalizeUrl

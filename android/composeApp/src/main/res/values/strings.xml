@@ -31,5 +31,5 @@
 <string name="back">Back</string>
 <string name="qr_autoconnect">Connects automatically once a QR code is scanned</string>
 <string name="qr_flashlight">Flashlight</string>
-<string name="app_name">Pi Remote</string>
+<string name="app_name">Pi Remote CMP</string>
 </resources>

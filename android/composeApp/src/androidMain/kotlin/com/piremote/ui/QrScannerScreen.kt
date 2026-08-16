@@ -62,7 +62,7 @@ import com.journeyapps.barcodescanner.BarcodeCallback
 import com.journeyapps.barcodescanner.BarcodeResult
 import com.journeyapps.barcodescanner.DecoratedBarcodeView
 import com.journeyapps.barcodescanner.DefaultDecoderFactory
-import com.piremote.R
+import com.piremote.cmp.R
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
