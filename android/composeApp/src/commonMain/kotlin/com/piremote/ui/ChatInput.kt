@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imeAnimationTarget
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -95,6 +96,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.backhandler.BackHandler
 import com.piremote.platform.rememberImagePicker
 import com.piremote.platform.decodeImageScaled
+import com.piremote.platform.isShiftPressed
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.piremote.net.PromptImage
 import kotlinx.coroutines.Dispatchers
@@ -160,7 +162,7 @@ fun ChatInput(
     // The animation TARGET, not the live inset: hiding the keyboard sets the
     // target to 0 immediately, so opening the panel never trips this; showing
     // it (tapping the field) flips the target to >0 and closes the panel.
-    val imeTarget = WindowInsets.imeAnimationTarget.getBottom(density)
+    val imeTarget = WindowInsets.ime.getBottom(density)
     LaunchedEffect(imeTarget) {
         if (imeTarget > 0) {
             panelOpen = false
@@ -242,7 +244,7 @@ fun ChatInput(
                     // extra padding (avoids double-counting). Keyboard mode:
                     // pad by the IME *target* so the composer never drops while
                     // the keyboard animates in.
-                    val padPx = if (panelVisible) 0 else WindowInsets.imeAnimationTarget.getBottom(density)
+                    val padPx = if (panelVisible) 0 else WindowInsets.ime.getBottom(density)
                     padPx.toDp()
                 },
             ),
@@ -329,7 +331,7 @@ fun ChatInput(
                             // Enter sends; Shift+Enter inserts a newline. KeyDown
                             // is swallowed so the newline never lands in the draft.
                             .onPreviewKeyEvent { event ->
-                                if (event.key != Key.Enter || event.nativeKeyEvent.isShiftPressed) {
+                                if (event.key != Key.Enter || isShiftPressed(event)) {
                                     return@onPreviewKeyEvent false
                                 }
                                 when (event.type) {

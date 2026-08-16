@@ -54,12 +54,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.piremote.data.SessionStore
 import com.piremote.net.Item
+import com.piremote.net.fixed
 import com.piremote.net.ModelDto
 import com.piremote.net.PromptImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -474,7 +474,7 @@ private fun ChatRow.isEmptyPending(): Boolean {
  */
 private fun formatTokens(tokens: Int?): String = when {
     tokens == null -> "?"
-    tokens >= 1000 -> "%.1fk".format(tokens / 1000.0)
+    tokens >= 1000 -> "${fixed(tokens / 1000.0, 1)}k"
     else -> tokens.toString()
 }
 

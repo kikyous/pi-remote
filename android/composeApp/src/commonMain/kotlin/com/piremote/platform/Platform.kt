@@ -4,6 +4,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.key.KeyEvent
 import com.piremote.data.SettingsStore
 import com.piremote.net.PromptImage
 import io.ktor.client.HttpClient
@@ -74,6 +75,9 @@ expect fun watchNetworkChanges(onNetworkUp: () -> Unit)
  */
 expect fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap?
 
+/** Shift held during a key event (Shift+Enter inserts a newline). */
+expect fun isShiftPressed(event: KeyEvent): Boolean
+
 /**
  * Launch the platform photo picker (multi-select) and hand back the picked
  * images as [PromptImage] (already decoded, scaled and base64-encoded for the
@@ -89,6 +93,12 @@ expect fun rememberImagePicker(onPicked: (List<PromptImage>) -> Unit): () -> Uni
  */
 @Composable
 expect fun QrScanButton(onScanned: (String) -> Unit, modifier: Modifier = Modifier)
+
+/**
+ * Platform-neutral mutual exclusion. Android/JVM: the `synchronized` monitor;
+ * iOS: a recursive lock. The [lock] argument is just an identity token.
+ */
+expect fun <T> lock(lock: Any, block: () -> T): T
 
 /**
  * Android 12+ dynamic color; anything else returns null and the caller falls

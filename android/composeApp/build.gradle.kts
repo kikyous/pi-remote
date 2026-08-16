@@ -44,6 +44,7 @@ kotlin {
             implementation("org.jetbrains.compose.ui:ui-backhandler:$cmpVersion")
             implementation(compose.components.resources)
             implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
+            implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.43.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
             implementation("io.ktor:ktor-client-core:3.3.3")
@@ -62,7 +63,6 @@ kotlin {
             implementation("io.ktor:ktor-client-okhttp:3.3.3")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
             implementation("com.journeyapps:zxing-android-embedded:4.3.0")
-            implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.43.0")
         }
         iosMain.dependencies {
             implementation("io.ktor:ktor-client-darwin:3.3.3")

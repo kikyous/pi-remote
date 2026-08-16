@@ -8,6 +8,7 @@ import com.piremote.net.SessionSummaryDto
 import com.piremote.net.WorkspaceDto
 import com.piremote.net.SocketStatus
 import com.piremote.platform.PlatformServices
+import com.piremote.platform.lock
 import com.piremote.platform.watchNetworkChanges
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +47,7 @@ class AppRepository(
     private val platform: PlatformServices,
 ) {
     companion object {
-        @Volatile
+        @kotlin.concurrent.Volatile
         private var instance: AppRepository? = null
 
         /**
@@ -62,12 +63,9 @@ class AppRepository(
          */
         fun get(platform: PlatformServices): AppRepository {
             instance?.let { return it }
-            synchronized(this) {
-                instance?.let { return it }
-                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-                val repo = AppRepository(PiRemoteClient("", ""), scope, platform)
-                instance = repo
-                return repo
+            return lock(this) {
+                instance ?: AppRepository(PiRemoteClient("", ""), CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), platform)
+                    .also { instance = it }
             }
         }
 
@@ -177,17 +175,17 @@ class AppRepository(
 
     /** Look up a store without creating one — used by event routing. */
     private fun existingStore(sessionId: String): SessionStore? =
-        synchronized(stores) { stores[sessionId] }
+        lock(stores) { stores[sessionId] }
 
     /** Start following a session's live events; call [stopFollowing] when done. */
     fun startFollowing(sessionId: String) = socket.follow(sessionId)
 
     fun stopFollowing(sessionId: String) = socket.unfollow(sessionId)
 
-    fun storeFor(sessionId: String): SessionStore = synchronized(stores) {
+    fun storeFor(sessionId: String): SessionStore = lock(stores) {
         stores.remove(sessionId)?.let { existing ->
             stores[sessionId] = existing
-            return existing
+            return@lock existing
         }
         val created = SessionStore(sessionId, client, scope, platform.strings, socket::resync)
         stores[sessionId] = created
@@ -195,7 +193,7 @@ class AppRepository(
             val oldest = stores.keys.first()
             stores.remove(oldest)
         }
-        created
+        return@lock created
     }
 
     fun refreshProjects() {

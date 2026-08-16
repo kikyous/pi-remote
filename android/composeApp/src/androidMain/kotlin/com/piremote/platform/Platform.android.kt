@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -125,6 +126,10 @@ private object AndroidServices : PlatformServices {
 
 actual fun createPlatformServices(): PlatformServices = AndroidServices
 
+/* ---------------- mutual exclusion ---------------- */
+
+actual fun <T> lock(lock: Any, block: () -> T): T = synchronized(lock, block)
+
 /* ---------------- settings (DataStore) ---------------- */
 
 private val Context.dataStore by preferencesDataStore(name = "pi_remote_settings")
@@ -160,6 +165,8 @@ actual fun watchNetworkChanges(onNetworkUp: () -> Unit) {
 actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = runCatching {
     decodeScaled(bytes, maxEdge)?.asImageBitmap()
 }.getOrNull()
+
+actual fun isShiftPressed(event: KeyEvent): Boolean = event.nativeKeyEvent.isShiftPressed
 
 /** inSampleSize decode so a huge photo never materialises at full resolution. */
 private fun decodeScaled(bytes: ByteArray, maxEdge: Int): Bitmap? {

@@ -4,6 +4,8 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlin.math.pow
+import kotlin.math.roundToLong
 
 /**
  * Mirrors `server/src/protocol.ts`. Changes there need a matching change here.
@@ -99,7 +101,7 @@ data class TextDto(val s: String = "", val more: MoreDto? = null)
 data class MoreDto(val ref: String, val bytes: Int = 0) {
     val displaySize: String
         get() = when {
-            bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / 1024.0 / 1024.0)
+            bytes >= 1024 * 1024 -> "${fixed(bytes / 1024.0 / 1024.0, 1)} MB"
             bytes >= 1024 -> "${bytes / 1024} KB"
             else -> "$bytes B"
         }
@@ -213,13 +215,26 @@ data class ItemPageDto(
 )
 
 /** Thousands separators — shared with the session info sheet. */
-internal fun formatCount(n: Long): String = String.format("%,d", n)
+internal fun formatCount(n: Long): String {
+    val digits = n.toString()
+    return if (digits.length <= 3) digits
+    else digits.reversed().chunked(3).joinToString(",").reversed()
+}
+
+/** Fixed-decimal number without locale-dependent formatting. */
+internal fun fixed(x: Double, decimals: Int): String {
+    val factor = 10.0.pow(decimals)
+    val scaled = (x * factor).roundToLong()
+    val whole = scaled / factor.toLong()
+    val frac = (scaled % factor.toLong()).toString().padStart(decimals, '0')
+    return "$whole.$frac"
+}
 
 internal fun formatCost(cost: Double): String {
     val text = when {
-        cost >= 1.0 -> "%.2f".format(cost)
-        cost >= 0.0001 -> "%.4f".format(cost)
-        else -> "%.6f".format(cost) // avoid "$0.0000" for sub-cent turns
+        cost >= 1.0 -> fixed(cost, 2)
+        cost >= 0.0001 -> fixed(cost, 4)
+        else -> fixed(cost, 6) // avoid "$0.0000" for sub-cent turns
     }
     return "$$text"
 }

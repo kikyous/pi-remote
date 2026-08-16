@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -73,6 +74,19 @@ actual fun createPlatformServices(): PlatformServices = object : PlatformService
     override fun notifyFinished(sessionId: String, title: String, preview: String) = Unit
 }
 
+/* ---------------- mutual exclusion ---------------- */
+
+private val globalLock = platform.Foundation.NSRecursiveLock()
+
+actual fun <T> lock(lock: Any, block: () -> T): T {
+    globalLock.lock()
+    try {
+        return block()
+    } finally {
+        globalLock.unlock()
+    }
+}
+
 /* ---------------- settings (DataStore) ---------------- */
 
 actual fun createSettingsStore(): SettingsStore {
@@ -122,6 +136,9 @@ actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = run
     }
     scaled.toComposeImageBitmap()
 }.getOrNull()
+
+// TODO(v2): read the platform modifier state; Android reads the native key event.
+actual fun isShiftPressed(event: KeyEvent): Boolean = false
 
 @Composable
 actual fun rememberImagePicker(onPicked: (List<PromptImage>) -> Unit): () -> Unit {

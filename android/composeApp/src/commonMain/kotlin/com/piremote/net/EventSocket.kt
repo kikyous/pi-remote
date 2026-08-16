@@ -1,5 +1,6 @@
 package com.piremote.net
 
+import com.piremote.platform.lock
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.client.request.url
@@ -51,7 +52,7 @@ class EventSocket(
     private val cursors = HashMap<String, Long>()
     private val wanted = HashSet<String>()
 
-    @Volatile
+    @kotlin.concurrent.Volatile
     private var socket: DefaultClientWebSocketSession? = null
     private var connectJob: Job? = null
     private var attempt = 0
@@ -64,7 +65,7 @@ class EventSocket(
      * frames / close can neither clobber a newer connection's state nor apply
      * stale frames twice.
      */
-    @Volatile
+    @kotlin.concurrent.Volatile
     private var epoch = 0
 
     /**
@@ -75,7 +76,7 @@ class EventSocket(
      * page, the settings and the status in one frame.
      */
     fun resync(sessionId: String) {
-        synchronized(this) {
+        lock(this) {
             cursors.remove(sessionId)
             val live = socket
             if (live != null && _status.value == SocketStatus.Connected) sendSubscribe(live, sessionId)
@@ -84,8 +85,8 @@ class EventSocket(
     }
 
     fun follow(sessionId: String) {
-        synchronized(this) {
-            if (!wanted.add(sessionId)) return
+        lock(this) {
+            if (!wanted.add(sessionId)) return@lock
             val live = socket
             if (live != null && _status.value == SocketStatus.Connected) {
                 sendSubscribe(live, sessionId)
@@ -96,8 +97,8 @@ class EventSocket(
     }
 
     fun unfollow(sessionId: String) {
-        synchronized(this) {
-            if (!wanted.remove(sessionId)) return
+        lock(this) {
+            if (!wanted.remove(sessionId)) return@lock
             socket?.let { live ->
                 live.outgoing.trySend(
                     Frame.Text(client.json.encodeToString(WsUnsubscribe.serializer(), WsUnsubscribe(sessionId = sessionId))),
@@ -110,10 +111,10 @@ class EventSocket(
     /** Called when the app returns to the foreground or the network changes. */
     fun reconnectNow() {
         if (wanted.isEmpty()) return
-        synchronized(this) {
+        lock(this) {
             // A connection is already coming up; forcing a new one here would
             // open a duplicate socket that races the first.
-            if (_status.value == SocketStatus.Connecting) return
+            if (_status.value == SocketStatus.Connecting) return@lock
             epoch += 1
             attempt = 0
             closedByUs = false
@@ -132,7 +133,7 @@ class EventSocket(
     }
 
     fun disconnect() {
-        synchronized(this) {
+        lock(this) {
             epoch += 1
             closedByUs = true
             connectJob?.cancel()
@@ -144,7 +145,7 @@ class EventSocket(
     }
 
     private fun connect() {
-        synchronized(this) {
+        lock(this) {
             connectLocked()
         }
     }
@@ -167,11 +168,11 @@ class EventSocket(
         connectJob = scope.launch {
             try {
                 val session = client.httpClient().webSocketSession { url(client.wsUrl()) }
-                synchronized(this@EventSocket) {
+                lock(this@EventSocket) {
                     if (myEpoch != epoch) {
                         // A socket superseded before it finished opening.
                         session.cancel()
-                        return@synchronized
+                        return@lock
                     }
                     socket = session
                     attempt = 0
@@ -185,8 +186,8 @@ class EventSocket(
                     onFrame(frame.readText())
                 }
                 // Normal close (remote or local).
-                synchronized(this@EventSocket) {
-                    if (myEpoch != epoch) return@synchronized
+                lock(this@EventSocket) {
+                    if (myEpoch != epoch) return@lock
                     socket = null
                     _status.value = SocketStatus.Disconnected
                     scheduleReconnect()
@@ -195,8 +196,8 @@ class EventSocket(
                 throw e
             } catch (e: Exception) {
                 // Connect failure or mid-stream error.
-                synchronized(this@EventSocket) {
-                    if (myEpoch != epoch) return@synchronized
+                lock(this@EventSocket) {
+                    if (myEpoch != epoch) return@lock
                     socket = null
                     _status.value = SocketStatus.Disconnected
                     scheduleReconnect()
@@ -219,15 +220,15 @@ class EventSocket(
 
         push.sessionId?.let { id ->
             push.cursor?.let { seq ->
-                synchronized(this) { cursors[id] = seq }
+                lock(this) { cursors[id] = seq }
             }
         }
         _pushes.tryEmit(push)
     }
 
     private fun scheduleReconnect() {
-        synchronized(this) {
-            if (closedByUs || wanted.isEmpty()) return
+        lock(this) {
+            if (closedByUs || wanted.isEmpty()) return@lock
             val backoff = min(MAX_BACKOFF_MS, (BASE_BACKOFF_MS * 2.0.pow(attempt)).toLong())
             attempt++
             // The delayed job is deliberately untracked, so disconnect() can't
@@ -237,8 +238,8 @@ class EventSocket(
             val myEpoch = epoch
             scope.launch {
                 delay(backoff)
-                synchronized(this@EventSocket) {
-                    if (myEpoch != epoch || closedByUs || wanted.isEmpty()) return@synchronized
+                lock(this@EventSocket) {
+                    if (myEpoch != epoch || closedByUs || wanted.isEmpty()) return@lock
                     connectLocked()
                 }
             }

@@ -39,6 +39,7 @@ import com.piremote.net.ContextUsageDto
 import com.piremote.net.ModelDto
 import com.piremote.net.SessionDetailDto
 import com.piremote.net.SessionStatsDto
+import com.piremote.net.fixed
 import com.piremote.net.formatCost
 import com.piremote.net.formatCount
 import kotlinx.coroutines.CancellationException
@@ -200,8 +201,8 @@ private fun contextSummary(context: ContextUsageDto): String {
 
 /** `301360` → `301.4k`, `1048576` → `1.0M`. Small counts stay exact. */
 private fun compactTokens(n: Long): String = when {
-    n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
-    n >= 1_000 -> "%.1fk".format(n / 1_000.0)
+    n >= 1_000_000 -> "${fixed(n / 1_000_000.0, 1)}M"
+    n >= 1_000 -> "${fixed(n / 1_000.0, 1)}k"
     else -> n.toString()
 }
 
