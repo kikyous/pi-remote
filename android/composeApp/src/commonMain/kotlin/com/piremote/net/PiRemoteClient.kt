@@ -10,11 +10,13 @@ import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.request.url
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import io.ktor.http.takeFrom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -179,12 +181,12 @@ class PiRemoteClient(
     }
 
     private suspend inline fun <reified T> get(path: String): T =
-        request { this.method = HttpMethod.Get; url(url(path)) }
+        request { this.method = HttpMethod.Get; url { takeFrom(apiUrl(path)) } }
 
     private suspend inline fun <reified T> post(path: String, body: String, readTimeoutSeconds: Long = 0): T =
         request(readTimeoutSeconds) {
             this.method = HttpMethod.Post
-            url(url(path))
+            url { takeFrom(apiUrl(path)) }
             contentType(ContentType.Application.Json)
             setBody(body)
         }
@@ -192,13 +194,13 @@ class PiRemoteClient(
     private suspend inline fun <reified T> patch(path: String, body: String): T =
         request {
             this.method = HttpMethod.Patch
-            url(url(path))
+            url { takeFrom(apiUrl(path)) }
             contentType(ContentType.Application.Json)
             setBody(body)
         }
 
     private suspend inline fun <reified T> delete(path: String): T =
-        request { this.method = HttpMethod.Delete; url(url(path)) }
+        request { this.method = HttpMethod.Delete; url { takeFrom(apiUrl(path)) } }
 
     private suspend inline fun <reified T> request(
         readTimeoutSeconds: Long = 0,
@@ -208,7 +210,7 @@ class PiRemoteClient(
         return withContext(Dispatchers.Default) { json.decodeFromString(text) }
     }
 
-    private fun url(path: String) = "${baseUrl.trimEnd('/')}/api/v1/$path"
+    private fun apiUrl(path: String) = "${baseUrl.trimEnd('/')}/api/v1/$path"
 
     /**
      * Performs the request, converting error bodies to [ApiException].
