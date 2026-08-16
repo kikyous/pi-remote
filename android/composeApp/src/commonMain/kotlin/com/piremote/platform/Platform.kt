@@ -87,12 +87,23 @@ expect fun isShiftPressed(event: KeyEvent): Boolean
 expect fun rememberImagePicker(onPicked: (List<PromptImage>) -> Unit): () -> Unit
 
 /**
- * Entry point to the QR scanner. Android: a button that asks for camera
- * permission and opens the scanner screen. iOS: nothing (v1 — manual entry
- * only); the button row simply does not appear.
+ * The "scan a QR code" entry button. Android: asks for camera permission,
+ * then invokes [onRequestScan]; iOS: renders nothing (v1 — manual entry only).
+ * The caller switches to [QrScannerHost] (full screen) from the callback.
  */
 @Composable
-expect fun QrScanButton(onScanned: (String) -> Unit, modifier: Modifier = Modifier)
+expect fun QrScanButton(onRequestScan: () -> Unit, modifier: Modifier = Modifier)
+
+/**
+ * Full-screen QR scanner (replaces the calling screen while active).
+ * Android: the zxing camera preview; iOS: nothing (v1).
+ */
+@Composable
+expect fun QrScannerHost(
+    onScanned: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+)
 
 /**
  * Platform-neutral mutual exclusion. Android/JVM: the `synchronized` monitor;

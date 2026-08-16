@@ -242,42 +242,43 @@ private suspend fun loadPromptImage(context: Context, uri: Uri): PromptImage? =
 /* ---------------- QR scanner ---------------- */
 
 @Composable
-actual fun QrScanButton(onScanned: (String) -> Unit, modifier: Modifier) {
+actual fun QrScanButton(onRequestScan: () -> Unit, modifier: Modifier) {
     val context = LocalContext.current
-    var showScanner by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         if (granted) {
-            showScanner = true
+            onRequestScan()
         } else {
             Toast.makeText(context, R.string.conn_camera_required, Toast.LENGTH_LONG).show()
         }
-    }
-
-    if (showScanner) {
-        QrScannerScreen(
-            onScanned = {
-                showScanner = false
-                onScanned(it)
-            },
-            onDismiss = { showScanner = false },
-            modifier = Modifier.fillMaxSize(),
-        )
-        return
     }
 
     Button(
         onClick = {
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
                 PackageManager.PERMISSION_GRANTED
-            if (granted) showScanner = true else permissionLauncher.launch(Manifest.permission.CAMERA)
+            if (granted) onRequestScan() else permissionLauncher.launch(Manifest.permission.CAMERA)
         },
         modifier = modifier,
     ) {
         Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
         Text(stringResource(R.string.conn_scan), modifier = Modifier.padding(vertical = 4.dp))
     }
+}
+
+/** Full-screen camera scanner; replaces the calling screen while visible. */
+@Composable
+actual fun QrScannerHost(
+    onScanned: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier,
+) {
+    QrScannerScreen(
+        onScanned = onScanned,
+        onDismiss = onDismiss,
+        modifier = modifier,
+    )
 }
 
 /* ---------------- dynamic color ---------------- */

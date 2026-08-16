@@ -33,6 +33,7 @@ import com.piremote.net.PiRemoteClient
 import com.piremote.net.WIRE_PROTOCOL
 import com.piremote.platform.PlatformStrings
 import com.piremote.platform.QrScanButton
+import com.piremote.platform.QrScannerHost
 import kotlinx.coroutines.launch
 
 /**
@@ -62,6 +63,7 @@ fun ConnectScreen(
     var testing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var ok by remember { mutableStateOf(false) }
+    var showScanner by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     /** Verify a candidate connection and store it on success. */
@@ -105,6 +107,20 @@ fun ConnectScreen(
         attemptConnect(parsed.baseUrl, parsed.token)
     }
 
+    // The scanner replaces this whole screen while it is open — the camera
+    // must get the full display, not a slice of the form's column.
+    if (showScanner) {
+        QrScannerHost(
+            onScanned = {
+                showScanner = false
+                applyScannedPayload(it)
+            },
+            onDismiss = { showScanner = false },
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
+
     Scaffold(modifier = modifier) { padding ->
         Column(
             Modifier
@@ -120,7 +136,7 @@ fun ConnectScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            QrScanButton(onScanned = ::applyScannedPayload, modifier = Modifier.fillMaxWidth())
+            QrScanButton(onRequestScan = { showScanner = true }, modifier = Modifier.fillMaxWidth())
 
             OutlinedTextField(
                 value = url,
