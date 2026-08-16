@@ -4,9 +4,10 @@ package com.piremote.platform
 
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.KeyEvent
@@ -22,11 +23,15 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.websocket.WebSockets
+import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlin.math.roundToInt
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
@@ -36,7 +41,14 @@ import org.jetbrains.skia.SamplingMode
 import okio.Path.Companion.toPath
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.NSValue
+import platform.UIKit.CGRectValue
+import platform.UIKit.UIKeyboardFrameEndUserInfoKey
+import platform.UIKit.UIKeyboardWillChangeFrameNotification
+import platform.UIKit.UIScreen
 
 actual fun createPlatformHttpClient(): HttpClient = HttpClient(Darwin) {
     install(WebSockets) { pingIntervalMillis = 20_000 }
@@ -154,15 +166,60 @@ actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = run
     Image.makeFromBitmap(dst).toComposeImageBitmap()
 }.getOrNull()
 
+/* ---------------- keyboard insets ---------------- */
+
+/**
+ * CMP 1.11.1 does implement WindowInsets.ime on iOS, but once the scene is
+ * lifted above the keyboard its value can read 0 (the keyboard no longer
+ * overlaps the lifted view), so the composer's inset is cross-checked
+ * against UIKit's own keyboard frame. UIKeyboardWillChangeFrame fires at the
+ * START of every show/hide/type-change animation carrying the END frame —
+ * the same "jump straight to the target" semantics as Android's
+ * imeAnimationTarget. Height is kept in points; converted to px with the
+ * caller's density.
+ */
+private object ImeHeight {
+    private val _points = MutableStateFlow(0f)
+    val points: StateFlow<Float> = _points
+    private var installed = false
+
+    fun ensureInstalled() {
+        if (installed) return
+        installed = true
+        NSNotificationCenter.defaultCenter.addObserverForName(
+            name = UIKeyboardWillChangeFrameNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+        ) { notification ->
+            val endFrame = (notification?.userInfo?.get(UIKeyboardFrameEndUserInfoKey) as? NSValue)
+                ?.CGRectValue()
+            _points.value = if (endFrame == null) {
+                0f
+            } else {
+                val screenHeight = UIScreen.mainScreen.bounds.useContents { size.height }
+                endFrame.useContents {
+                    val top = origin.y
+                    if (top >= screenHeight) 0f else (screenHeight - top).toFloat()
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-actual fun imeAnimationTargetBottom(density: Density): Int {
-    // CMP 1.11.1 has no WindowInsets.ime actual on iOS (the expect is
-    // declared in common, but the iOS source set never implements it —
-    // referencing it fails to compile). iOS v1 leaves keyboard inset
-    // handling to the system and returns 0.
-    return 0
-}
+actual fun imeAnimationTargetBottom(density: Density): Int =
+    maxOf(
+        ImeHeight.points.collectAsState().value * density.density,
+        WindowInsets.ime.getBottom(density).toFloat(),
+    ).roundToInt()
+
+actual fun composerBottomPadding(imeTargetPx: Int, navBarPx: Int, panelVisible: Boolean): Int =
+    // CMP lifts the whole scene above the keyboard on iOS, so once the
+    // keyboard is up the composer needs no extra bottom inset — the keyboard
+    // already covers the home indicator. Pads by it anyway (like Android
+    // does) and the input box floats a nav-bar-height above the keyboard.
+    if (panelVisible || imeTargetPx > 0) 0 else navBarPx
 
 // TODO(v2): read the platform modifier state; Android reads the native key event.
 actual fun isShiftPressed(event: KeyEvent): Boolean = false

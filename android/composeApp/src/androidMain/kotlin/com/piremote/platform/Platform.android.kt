@@ -175,6 +175,9 @@ actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = run
 actual fun imeAnimationTargetBottom(density: Density): Int =
     WindowInsets.imeAnimationTarget.getBottom(density)
 
+actual fun composerBottomPadding(imeTargetPx: Int, navBarPx: Int, panelVisible: Boolean): Int =
+    if (panelVisible) navBarPx else imeTargetPx + navBarPx
+
 actual fun isShiftPressed(event: KeyEvent): Boolean = event.nativeKeyEvent.isShiftPressed
 
 /** inSampleSize decode so a huge photo never materialises at full resolution. */

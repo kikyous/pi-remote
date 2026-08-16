@@ -56,10 +56,7 @@ import com.piremote.data.SessionStore
 import com.piremote.net.Item
 import com.piremote.net.fixed
 import com.piremote.net.ModelDto
-import com.piremote.net.PromptImage
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter

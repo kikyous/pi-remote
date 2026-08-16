@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -48,7 +47,8 @@ import kotlinx.coroutines.launch
  * caught here rather than surfacing as an empty project list later.
  *
  * Scanning is platform-specific ([QrScanButton]): Android opens the camera
- * scanner, iOS hides the button (v1 — manual entry only).
+ * scanner (zxing), iOS uses its own AVFoundation session — both implement the
+ * same expect declarations.
  */
 @Composable
 fun ConnectScreen(

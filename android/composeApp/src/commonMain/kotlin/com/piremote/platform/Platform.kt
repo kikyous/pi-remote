@@ -80,10 +80,24 @@ expect fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap?
  * The keyboard animation's TARGET height (androidx's imeAnimationTarget).
  * Android: exact — the moment a show/hide starts, this is the final inset,
  * which lets the composer jump to its resting position without tracking the
- * animation. iOS: falls back to the live inset (no target API there).
+ * animation. iOS: the live keyboard inset (CMP 1.11 has no separate target
+ * API there; WindowInsets.ime is driven by the same source as the scene's
+ * own keyboard offset, so it stays consistent with the lifted view).
  */
 @Composable
 expect fun imeAnimationTargetBottom(density: Density): Int
+
+/**
+ * Bottom inset for the composer column, given the current keyboard height
+ * ([imeTargetPx]), the navigation-bar (home indicator) inset ([navBarPx])
+ * and whether the + panel is occupying the bottom.
+ *
+ * Android (edge-to-edge, no auto offset): keyboard up → nav bar + keyboard,
+ * so the composer steps over both; panel → nav bar only. iOS (CMP lifts the
+ * scene above the keyboard itself): keyboard up → 0 (the keyboard already
+ * covers the home indicator), panel / idle → nav bar only.
+ */
+expect fun composerBottomPadding(imeTargetPx: Int, navBarPx: Int, panelVisible: Boolean): Int
 
 /** Shift held during a key event (Shift+Enter inserts a newline). */
 expect fun isShiftPressed(event: KeyEvent): Boolean

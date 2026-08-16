@@ -30,7 +30,7 @@ private val crashHookInstalled: Boolean = run {
                 .URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, false, null)
                 ?.path
             if (docs != null) {
-                val text = (throwable as? Throwable)?.stackTraceToString() ?: throwable.toString()
+                val text = throwable.stackTraceToString()
                 (text as NSString).writeToFile("$docs/crash.log", true, NSUTF8StringEncoding, null)
             }
         }

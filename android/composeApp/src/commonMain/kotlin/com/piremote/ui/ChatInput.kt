@@ -10,22 +10,17 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,7 +45,6 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -64,21 +58,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -89,7 +80,6 @@ import org.jetbrains.compose.resources.stringResource
 import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 
@@ -97,6 +87,7 @@ import androidx.compose.ui.backhandler.BackHandler
 import com.piremote.platform.rememberImagePicker
 import com.piremote.platform.decodeImageScaled
 import com.piremote.platform.isShiftPressed
+import com.piremote.platform.composerBottomPadding
 import com.piremote.platform.imeAnimationTargetBottom
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.piremote.net.PromptImage
@@ -164,6 +155,7 @@ fun ChatInput(
     // it (tapping the field) flips the target to >0 and closes the panel.
     // (androidx imeAnimationTarget via expect/actual — exact on Android.)
     val imeTarget = imeAnimationTargetBottom(density)
+    val navBarPx = WindowInsets.navigationBars.getBottom(density)
     LaunchedEffect(imeTarget) {
         if (imeTarget > 0) {
             panelOpen = false
@@ -230,23 +222,17 @@ fun ChatInput(
     }
 
     // enableEdgeToEdge draws behind the system bars, so the composer has to
-    // step around the navigation bar. Instead of `imePadding()` (which animates
-    // with the keyboard and would let the composer drop during a panel<->ime
-    // switch), pad by the IME *target*: it jumps to the full keyboard height
-    // the instant show() is called, so the composer never moves either way.
+    // step around the navigation bar / keyboard. Platform-adaptive via
+    // composerBottomPadding: Android pads by nav bar + IME target (it owns the
+    // inset itself); iOS pads by nothing while the keyboard is up, because CMP
+    // already lifts the whole scene above it.
     Column(
         modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
-            .navigationBarsPadding()
             .padding(
                 bottom = with(density) {
-                    // Panel mode: the panel itself provides the height, so no
-                    // extra padding (avoids double-counting). Keyboard mode:
-                    // pad by the IME *target* so the composer never drops while
-                    // the keyboard animates in.
-                    val padPx = if (panelVisible) 0 else imeTarget
-                    padPx.toDp()
+                    composerBottomPadding(imeTarget, navBarPx, panelVisible).toDp()
                 },
             ),
     ) {
