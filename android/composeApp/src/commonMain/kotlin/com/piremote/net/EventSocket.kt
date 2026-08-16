@@ -118,6 +118,14 @@ class EventSocket(
             epoch += 1
             attempt = 0
             closedByUs = false
+            // Kill the previous connection coroutine before trying to open a
+            // new one. In the Ktor model connectJob owns the receive loop and
+            // stays active for the whole socket lifetime, so without this the
+            // isActive guard in connectLocked() below would bail and no fresh
+            // socket would ever open after a reconnect — the app comes back
+            // from the background to a permanently loading screen.
+            connectJob?.cancel()
+            connectJob = null
             val old = socket
             socket = null
             _status.value = SocketStatus.Disconnected
