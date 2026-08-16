@@ -21,4 +21,15 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PiRemote"
-include(":app")
+include(":composeApp")
+
+plugins {
+    id("com.android.application") version "9.3.1" apply false
+    // Kotlin Multiplatform: one module, android + ios targets.
+    id("org.jetbrains.kotlin.multiplatform") version "2.4.10" apply false
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10" apply false
+    // Kotlin 2.0+ ships the Compose compiler as a plugin matching the Kotlin version.
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10" apply false
+    // Compose Multiplatform: runtime/foundation/material3/ui for android + ios.
+    id("org.jetbrains.compose") version "1.11.1" apply false
+}
