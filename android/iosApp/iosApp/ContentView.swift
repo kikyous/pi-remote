@@ -16,6 +16,11 @@ struct ComposeView: UIViewControllerRepresentable {
 struct ContentView: View {
     var body: some View {
         ComposeView()
-            .ignoresSafeArea(.keyboard)
+            // Full-bleed: without this, SwiftUI insets the representable to the
+            // safe area and the Compose UI looks letterboxed (short, with blank
+            // bands above the status bar / below the home indicator). Ignoring
+            // ALL regions also keeps the keyboard from compressing the view —
+            // Compose handles keyboard insets itself.
+            .ignoresSafeArea()
     }
 }

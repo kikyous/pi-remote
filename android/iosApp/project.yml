@@ -31,6 +31,15 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # iPhone-only apps installed on an iPad run in a phone-sized floating
+        # window ("not full screen, very short"). Declare iPad as a target
+        # family AND require full screen so it fills the whole display.
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # Scan-to-connect is v2 on iOS; the camera permission is declared now so
         # adding the AVFoundation scanner later needs no store review dance.
         NSCameraUsageDescription: Scans the QR code printed by pi-remote-server on your PC to connect.
@@ -45,7 +54,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.piremote.cmp.ios
         PRODUCT_NAME: PiRemoteCMP
-        TARGETED_DEVICE_FAMILY: "1"
+        # iPhone + iPad; without the iPad family this app can only ever run as
+        # a small compatibility window on an iPad.
+        TARGETED_DEVICE_FAMILY: "1,2"
         FRAMEWORK_SEARCH_PATHS: $(inherited) $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
         OTHER_LDFLAGS: $(inherited) -framework PiRemote
         # The Kotlin Gradle script phase writes into the build dir; the
