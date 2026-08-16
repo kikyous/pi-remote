@@ -26,13 +26,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.material3.ColorScheme
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.edit
@@ -165,6 +169,11 @@ actual fun watchNetworkChanges(onNetworkUp: () -> Unit) {
 actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = runCatching {
     decodeScaled(bytes, maxEdge)?.asImageBitmap()
 }.getOrNull()
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+actual fun imeAnimationTargetBottom(density: Density): Int =
+    WindowInsets.imeAnimationTarget.getBottom(density)
 
 actual fun isShiftPressed(event: KeyEvent): Boolean = event.nativeKeyEvent.isShiftPressed
 

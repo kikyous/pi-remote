@@ -97,6 +97,7 @@ import androidx.compose.ui.backhandler.BackHandler
 import com.piremote.platform.rememberImagePicker
 import com.piremote.platform.decodeImageScaled
 import com.piremote.platform.isShiftPressed
+import com.piremote.platform.imeAnimationTargetBottom
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.piremote.net.PromptImage
 import kotlinx.coroutines.Dispatchers
@@ -104,7 +105,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.max
 
 /**
  * The composer.
@@ -159,25 +159,16 @@ fun ChatInput(
         if (imePx > panelHeightPx) panelHeightPx = imePx
     }
 
-    // Emulate the animation TARGET that androidx exposes as imeAnimationTarget
-    // (not ported to Compose Multiplatform). Two behaviours depend on it:
-    //  1. closing the panel must react only to a SHOWING keyboard — the live
-    //     inset shrinks during the hide animation and would instantly close a
-    //     just-opened panel;
-    //  2. the composer's bottom padding must jump to the final height the
-    //     moment the keyboard starts showing, so panel<->keyboard switches
-    //     never make the composer (and the chat above it) bounce.
-    var lastImePx by remember { mutableStateOf(0) }
-    var imeShowing by remember { mutableStateOf(false) }
-    LaunchedEffect(imePx) {
-        val growing = imePx > lastImePx
-        imeShowing = growing
-        if (growing) {
-            // A show animation is underway (tapped the field, or setIme(true)).
+    // The animation TARGET, not the live inset: hiding the keyboard sets the
+    // target to 0 immediately, so opening the panel never trips this; showing
+    // it (tapping the field) flips the target to >0 and closes the panel.
+    // (androidx imeAnimationTarget via expect/actual — exact on Android.)
+    val imeTarget = imeAnimationTargetBottom(density)
+    LaunchedEffect(imeTarget) {
+        if (imeTarget > 0) {
             panelOpen = false
             panelClosing = false
         }
-        lastImePx = imePx
     }
 
     val keyboard = LocalSoftwareKeyboardController.current
@@ -252,15 +243,9 @@ fun ChatInput(
                 bottom = with(density) {
                     // Panel mode: the panel itself provides the height, so no
                     // extra padding (avoids double-counting). Keyboard mode:
-                    // while the keyboard is SHOWING, jump straight to the last
-                    // known full height (the cached panel height) instead of
-                    // tracking the animation — the composer never drops during
-                    // a panel<->keyboard switch. Falls back to the live inset
-                    // on the very first show (no cache yet), and tracks the
-                    // live inset while the keyboard hides.
-                    val padPx = if (panelVisible) 0 else {
-                        if (imeShowing) max(imePx, panelHeightPx) else imePx
-                    }
+                    // pad by the IME *target* so the composer never drops while
+                    // the keyboard animates in.
+                    val padPx = if (panelVisible) 0 else imeTarget
                     padPx.toDp()
                 },
             ),

@@ -2,12 +2,14 @@
 
 package com.piremote.platform
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.unit.Density
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -150,6 +152,10 @@ actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = run
     image.scalePixels(pixmap, SamplingMode.LINEAR, false)
     Image.makeFromBitmap(dst).toComposeImageBitmap()
 }.getOrNull()
+
+@Composable
+actual fun imeAnimationTargetBottom(density: Density): Int =
+    WindowInsets.ime.getBottom(density)
 
 // TODO(v2): read the platform modifier state; Android reads the native key event.
 actual fun isShiftPressed(event: KeyEvent): Boolean = false

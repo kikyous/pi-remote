@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.unit.Density
 import com.piremote.data.SettingsStore
 import com.piremote.net.PromptImage
 import io.ktor.client.HttpClient
@@ -74,6 +75,15 @@ expect fun watchNetworkChanges(onNetworkUp: () -> Unit)
  * Returns null when the bytes are not a decodable image.
  */
 expect fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap?
+
+/**
+ * The keyboard animation's TARGET height (androidx's imeAnimationTarget).
+ * Android: exact — the moment a show/hide starts, this is the final inset,
+ * which lets the composer jump to its resting position without tracking the
+ * animation. iOS: falls back to the live inset (no target API there).
+ */
+@Composable
+expect fun imeAnimationTargetBottom(density: Density): Int
 
 /** Shift held during a key event (Shift+Enter inserts a newline). */
 expect fun isShiftPressed(event: KeyEvent): Boolean
