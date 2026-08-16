@@ -56,7 +56,7 @@ npm start
 First launch prints the connection info and auto-generates a token, along with a **QR code** to pair the phone in one scan:
 
 ```
-pi-remote-bridge 0.3.1
+pi-remote-bridge 0.4.0
   URL:   http://192.168.31.117:30150
   Token: 85Ou5U44v-lN0BckrE6QJ5OuMgBAekZQ
   Listening on all interfaces — only use this on a trusted network.

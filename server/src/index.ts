@@ -9,7 +9,7 @@ import { HttpError, Router } from "./http.ts";
 import { API_PREFIX, PROTOCOL, type PromptImageDto } from "./protocol.ts";
 import { attachWebSocket } from "./ws.ts";
 
-const VERSION = "0.3.1";
+const VERSION = "0.4.0";
 
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
