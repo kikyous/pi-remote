@@ -2,6 +2,7 @@
 
 package com.piremote.platform
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
@@ -153,9 +154,15 @@ actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = run
     Image.makeFromBitmap(dst).toComposeImageBitmap()
 }.getOrNull()
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-actual fun imeAnimationTargetBottom(density: Density): Int =
-    WindowInsets.ime.getBottom(density)
+actual fun imeAnimationTargetBottom(density: Density): Int {
+    // CMP 1.11.1 has no WindowInsets.ime actual on iOS (the expect is
+    // declared in common, but the iOS source set never implements it —
+    // referencing it fails to compile). iOS v1 leaves keyboard inset
+    // handling to the system and returns 0.
+    return 0
+}
 
 // TODO(v2): read the platform modifier state; Android reads the native key event.
 actual fun isShiftPressed(event: KeyEvent): Boolean = false

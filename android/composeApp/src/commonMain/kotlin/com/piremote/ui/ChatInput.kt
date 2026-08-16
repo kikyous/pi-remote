@@ -153,7 +153,7 @@ fun ChatInput(
     // hidden, but the panel takes its place 1:1 (no jitter on toggle). Only
     // grow the capture — the hide animation would otherwise shrink it to 0.
     val density = LocalDensity.current
-    val imePx = WindowInsets.ime.getBottom(density)
+    val imePx = imeAnimationTargetBottom(density)
     var panelHeightPx by remember { mutableStateOf(0) }
     LaunchedEffect(imePx) {
         if (imePx > panelHeightPx) panelHeightPx = imePx

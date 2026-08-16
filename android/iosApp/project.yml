@@ -6,9 +6,12 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: 45RMTN4VYV
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.9"
+    # Xcode's SwiftUI preview links a __preview.dylib that fails on Intel Macs;
+    # the preview is useless for this Compose app anyway.
+    ENABLE_PREVIEWS: NO
 targets:
   iosApp:
     type: application
@@ -20,6 +23,10 @@ targets:
       properties:
         CFBundleDisplayName: Pi Remote CMP
         UILaunchScreen: {}
+        # Required by Compose Multiplatform's PlistSanityCheck (crashes at
+        # startup with an IllegalStateException if missing).
+        CADisableMinimumFrameDurationOnPhone: true
+        UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -48,5 +55,9 @@ targets:
       - name: Compile Kotlin framework
         script: |
           cd "$SRCROOT/.."
+          # Xcode's script environment has no Java on PATH; the Kotlin gradle
+          # build needs a JDK (this machine: JDK 17 under ~/tools).
+          export JAVA_HOME="/Users/chen/tools/jdk-17.0.20+8/Contents/Home"
+          export PATH="$JAVA_HOME/bin:$PATH"
           ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
         basedOnDependencyAnalysis: false
