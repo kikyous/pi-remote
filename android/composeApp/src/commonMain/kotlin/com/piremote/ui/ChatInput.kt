@@ -160,13 +160,19 @@ fun ChatInput(
     }
 
     // Emulate the animation TARGET that androidx exposes as imeAnimationTarget
-    // (not ported to Compose Multiplatform): closing the panel must react only
-    // to a keyboard that is SHOWING. The live inset shrinks during the hide
-    // animation, so a naive `inset > 0` check would close a panel the instant
-    // it opens — the keyboard is still sliding away. Direction is the signal.
+    // (not ported to Compose Multiplatform). Two behaviours depend on it:
+    //  1. closing the panel must react only to a SHOWING keyboard — the live
+    //     inset shrinks during the hide animation and would instantly close a
+    //     just-opened panel;
+    //  2. the composer's bottom padding must jump to the final height the
+    //     moment the keyboard starts showing, so panel<->keyboard switches
+    //     never make the composer (and the chat above it) bounce.
     var lastImePx by remember { mutableStateOf(0) }
+    var imeShowing by remember { mutableStateOf(false) }
     LaunchedEffect(imePx) {
-        if (imePx > lastImePx) {
+        val growing = imePx > lastImePx
+        imeShowing = growing
+        if (growing) {
             // A show animation is underway (tapped the field, or setIme(true)).
             panelOpen = false
             panelClosing = false
@@ -246,9 +252,15 @@ fun ChatInput(
                 bottom = with(density) {
                     // Panel mode: the panel itself provides the height, so no
                     // extra padding (avoids double-counting). Keyboard mode:
-                    // pad by the IME *target* so the composer never drops while
-                    // the keyboard animates in.
-                    val padPx = if (panelVisible) 0 else WindowInsets.ime.getBottom(density)
+                    // while the keyboard is SHOWING, jump straight to the last
+                    // known full height (the cached panel height) instead of
+                    // tracking the animation — the composer never drops during
+                    // a panel<->keyboard switch. Falls back to the live inset
+                    // on the very first show (no cache yet), and tracks the
+                    // live inset while the keyboard hides.
+                    val padPx = if (panelVisible) 0 else {
+                        if (imeShowing) max(imePx, panelHeightPx) else imePx
+                    }
                     padPx.toDp()
                 },
             ),
