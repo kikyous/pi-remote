@@ -159,15 +159,19 @@ fun ChatInput(
         if (imePx > panelHeightPx) panelHeightPx = imePx
     }
 
-    // The animation TARGET, not the live inset: hiding the keyboard sets the
-    // target to 0 immediately, so opening the panel never trips this; showing
-    // it (tapping the field) flips the target to >0 and closes the panel.
-    val imeTarget = WindowInsets.ime.getBottom(density)
-    LaunchedEffect(imeTarget) {
-        if (imeTarget > 0) {
+    // Emulate the animation TARGET that androidx exposes as imeAnimationTarget
+    // (not ported to Compose Multiplatform): closing the panel must react only
+    // to a keyboard that is SHOWING. The live inset shrinks during the hide
+    // animation, so a naive `inset > 0` check would close a panel the instant
+    // it opens — the keyboard is still sliding away. Direction is the signal.
+    var lastImePx by remember { mutableStateOf(0) }
+    LaunchedEffect(imePx) {
+        if (imePx > lastImePx) {
+            // A show animation is underway (tapped the field, or setIme(true)).
             panelOpen = false
             panelClosing = false
         }
+        lastImePx = imePx
     }
 
     val keyboard = LocalSoftwareKeyboardController.current
