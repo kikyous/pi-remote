@@ -1,13 +1,13 @@
 package com.piremote.ui
 
-import com.piremote.R
 
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.text.style.TextOverflow
 
 /**
@@ -26,21 +26,21 @@ fun BusyChoiceDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.busy_title)) },
+        title = { Text(stringResource(Res.string.busy_title)) },
         text = {
-            val shown = message.ifBlank { stringResource(R.string.busy_image_placeholder) }
+            val shown = message.ifBlank { stringResource(Res.string.busy_image_placeholder) }
             Text(
-                stringResource(R.string.busy_message, shown),
+                stringResource(Res.string.busy_message, shown),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis,
             )
         },
         confirmButton = {
-            TextButton(onClick = { onSteer(); onDismiss() }) { Text(stringResource(R.string.busy_interrupt)) }
+            TextButton(onClick = { onSteer(); onDismiss() }) { Text(stringResource(Res.string.busy_interrupt)) }
         },
         dismissButton = {
-            TextButton(onClick = { onQueue(); onDismiss() }) { Text(stringResource(R.string.busy_queue)) }
+            TextButton(onClick = { onQueue(); onDismiss() }) { Text(stringResource(Res.string.busy_queue)) }
         },
     )
 }

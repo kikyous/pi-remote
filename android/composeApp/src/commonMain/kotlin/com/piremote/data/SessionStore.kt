@@ -1,11 +1,11 @@
 package com.piremote.data
 
-import com.piremote.R
 import com.piremote.net.ApiException
 import com.piremote.net.CompactResultDto
 import com.piremote.net.PiRemoteClient
 import com.piremote.net.PromptImage
 import com.piremote.net.Push
+import com.piremote.platform.PlatformStrings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +33,7 @@ class SessionStore(
     val sessionId: String,
     private val client: PiRemoteClient,
     private val scope: CoroutineScope,
-    private val context: android.content.Context,
+    private val strings: PlatformStrings,
     /** Ask the socket for a fresh snapshot. What the refresh button does. */
     private val onResync: (String) -> Unit,
 ) {
@@ -188,7 +188,7 @@ class SessionStore(
     fun abort() {
         scope.launch {
             runCatching { client.abort(sessionId) }
-                .onFailure { e -> _state.update { it.copy(error = e.message ?: context.getString(R.string.err_abort)) } }
+                .onFailure { e -> _state.update { it.copy(error = e.message ?: strings.errAbort) } }
         }
     }
 
@@ -213,7 +213,7 @@ class SessionStore(
                 _state.update { it.copy(detail = detail) }
                 onDone(null)
             } catch (e: Exception) {
-                onDone(e.message ?: context.getString(R.string.err_set_title))
+                onDone(e.message ?: strings.errSetTitle)
             }
         }
     }
@@ -231,7 +231,7 @@ class SessionStore(
                 onDone(detail.name, null)
             } catch (e: Exception) {
                 _state.update { it.copy(generatingTitle = false) }
-                onDone(null, e.message ?: context.getString(R.string.err_generate_title))
+                onDone(null, e.message ?: strings.errGenerateTitle)
             }
         }
     }
@@ -254,7 +254,7 @@ class SessionStore(
                 onDone(result, null)
             } catch (e: Exception) {
                 _state.update { it.copy(compacting = false) }
-                onDone(null, e.message ?: context.getString(R.string.err_compact))
+                onDone(null, e.message ?: strings.errCompact)
             }
         }
     }

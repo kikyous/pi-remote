@@ -1,6 +1,5 @@
 package com.piremote.ui
 
-import com.piremote.R
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,7 +33,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import com.piremote.net.ContextUsageDto
 import com.piremote.net.ModelDto
 import com.piremote.net.SessionDetailDto
@@ -76,7 +76,7 @@ fun SessionPickerSheets(
 
     when (sheet) {
         SessionSheet.Model -> PickerSheet(
-            title = stringResource(R.string.model),
+            title = stringResource(Res.string.model),
             options = models.map { PickerOption(it.key, it.name, it.provider) },
             selectedKey = currentModelDto?.key,
             onDismiss = onDismiss,
@@ -87,7 +87,7 @@ fun SessionPickerSheets(
         )
 
         SessionSheet.Thinking -> PickerSheet(
-            title = stringResource(R.string.thinking_level),
+            title = stringResource(Res.string.thinking_level),
             options = levels.map { PickerOption(it, it, null) },
             selectedKey = detail?.thinkingLevel,
             onDismiss = onDismiss,
@@ -114,7 +114,7 @@ fun SessionPickerSheets(
 @Composable
 private fun SessionInfoSheet(onDismiss: () -> Unit, loadStats: suspend () -> SessionStatsDto) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val failed = stringResource(R.string.err_load_stats)
+    val failed = stringResource(Res.string.err_load_stats)
     val load by produceState<Result<SessionStatsDto>?>(null, loadStats) {
         value = try {
             Result.success(loadStats())
@@ -127,7 +127,7 @@ private fun SessionInfoSheet(onDismiss: () -> Unit, loadStats: suspend () -> Ses
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Text(
-            stringResource(R.string.session_info),
+            stringResource(Res.string.session_info),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
@@ -163,30 +163,30 @@ private fun SessionInfoSheet(onDismiss: () -> Unit, loadStats: suspend () -> Ses
 
 @Composable
 private fun SessionInfoBody(stats: SessionStatsDto) {
-    stats.name?.takeIf { it.isNotBlank() }?.let { InfoRow(stringResource(R.string.session_info_name), it) }
-    InfoRow(stringResource(R.string.session_info_file), stats.file, mono = true)
-    InfoRow(stringResource(R.string.session_info_id), stats.id, mono = true)
+    stats.name?.takeIf { it.isNotBlank() }?.let { InfoRow(stringResource(Res.string.session_info_name), it) }
+    InfoRow(stringResource(Res.string.session_info_file), stats.file, mono = true)
+    InfoRow(stringResource(Res.string.session_info_id), stats.id, mono = true)
 
-    InfoHeader(stringResource(R.string.session_info_messages))
-    InfoRow(stringResource(R.string.session_info_user), formatCount(stats.messages.user.toLong()))
-    InfoRow(stringResource(R.string.session_info_assistant), formatCount(stats.messages.assistant.toLong()))
-    InfoRow(stringResource(R.string.session_info_tool_calls), formatCount(stats.messages.toolCalls.toLong()))
-    InfoRow(stringResource(R.string.session_info_tool_results), formatCount(stats.messages.toolResults.toLong()))
-    InfoRow(stringResource(R.string.session_info_total), formatCount(stats.messages.total.toLong()), strong = true)
+    InfoHeader(stringResource(Res.string.session_info_messages))
+    InfoRow(stringResource(Res.string.session_info_user), formatCount(stats.messages.user.toLong()))
+    InfoRow(stringResource(Res.string.session_info_assistant), formatCount(stats.messages.assistant.toLong()))
+    InfoRow(stringResource(Res.string.session_info_tool_calls), formatCount(stats.messages.toolCalls.toLong()))
+    InfoRow(stringResource(Res.string.session_info_tool_results), formatCount(stats.messages.toolResults.toLong()))
+    InfoRow(stringResource(Res.string.session_info_total), formatCount(stats.messages.total.toLong()), strong = true)
 
-    InfoHeader(stringResource(R.string.session_info_tokens))
-    InfoRow(stringResource(R.string.session_info_input), formatCount(stats.tokens.input))
-    InfoRow(stringResource(R.string.session_info_output), formatCount(stats.tokens.output))
-    InfoRow(stringResource(R.string.session_info_cache_read), formatCount(stats.tokens.cacheRead))
+    InfoHeader(stringResource(Res.string.session_info_tokens))
+    InfoRow(stringResource(Res.string.session_info_input), formatCount(stats.tokens.input))
+    InfoRow(stringResource(Res.string.session_info_output), formatCount(stats.tokens.output))
+    InfoRow(stringResource(Res.string.session_info_cache_read), formatCount(stats.tokens.cacheRead))
     // Only Anthropic-style APIs report cache writes; a zero row would be noise.
     if (stats.tokens.cacheWrite > 0) {
-        InfoRow(stringResource(R.string.session_info_cache_write), formatCount(stats.tokens.cacheWrite))
+        InfoRow(stringResource(Res.string.session_info_cache_write), formatCount(stats.tokens.cacheWrite))
     }
-    InfoRow(stringResource(R.string.session_info_total), formatCount(stats.tokens.total), strong = true)
+    InfoRow(stringResource(Res.string.session_info_total), formatCount(stats.tokens.total), strong = true)
 
-    InfoHeader(stringResource(R.string.session_info_spend))
-    InfoRow(stringResource(R.string.session_info_cost), formatCost(stats.cost), strong = true)
-    InfoRow(stringResource(R.string.session_info_context), contextSummary(stats.context))
+    InfoHeader(stringResource(Res.string.session_info_spend))
+    InfoRow(stringResource(Res.string.session_info_cost), formatCost(stats.cost), strong = true)
+    InfoRow(stringResource(Res.string.session_info_context), contextSummary(stats.context))
 }
 
 /** "12.5k / 1.0M · 12%", or just the used half when the window is unknown. */
@@ -287,7 +287,7 @@ private fun PickerSheet(
                     if (option.key == selectedKey) {
                         Icon(
                             Icons.Default.Check,
-                            contentDescription = stringResource(R.string.selected),
+                            contentDescription = stringResource(Res.string.selected),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp),
                         )

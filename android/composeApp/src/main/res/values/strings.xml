@@ -1,157 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Pi Remote</string>
-
-    <!-- Common -->
-    <string name="back">Back</string>
-    <string name="more">More</string>
-    <string name="delete">Delete</string>
-    <string name="cancel">Cancel</string>
-    <string name="close">Close</string>
-    <string name="refresh">Refresh</string>
-    <string name="send">Send</string>
-    <string name="stop">Stop</string>
-    <string name="model">Model</string>
-    <string name="thinking_level">Thinking level</string>
-    <string name="new_session">New session</string>
-    <string name="generate_title">Generate title</string>
-    <string name="generating">Generating…</string>
-    <string name="compact_context">Compact context</string>
-    <string name="compacting">Compacting…</string>
-    <string name="expand">Expand</string>
-    <string name="collapse">Collapse</string>
-    <string name="selected">Selected</string>
-    <string name="image">Image</string>
-    <string name="session">Session</string>
-
-    <!-- Chat -->
-    <string name="chat_hint">Message pi…</string>
-    <string name="chat_queued">Queued: %1$s</string>
-    <string name="chat_waiting_model">Waiting for model…</string>
-    <string name="chat_loading_earlier">Loading earlier messages</string>
-    <!-- Same row while paging is idle: there is more history, nothing in flight. -->
-    <string name="chat_earlier_messages">Earlier messages</string>
-    <string name="chat_empty">No messages in this session yet</string>
-    <string name="chat_switch_model">Switch model</string>
-    <string name="chat_send_image">Send image</string>
-    <string name="chat_attached_image">Attached image</string>
-    <string name="chat_remove_attachment">Remove attachment</string>
-    <string name="chat_title_generated">Generated title: %1$s</string>
-    <string name="chat_compacted">Context compacted: %1$s → %2$s tokens</string>
-    <string name="chat_image_read_failed">Failed to read image</string>
-    <string name="chat_session_running"> · Running</string>
-    <!-- Session info sheet: what this session has spent -->
-    <string name="session_info">Session info</string>
-    <string name="session_info_name">Name</string>
-    <string name="session_info_file">File</string>
-    <string name="session_info_id">ID</string>
-    <string name="session_info_messages">Messages</string>
-    <string name="session_info_user">User</string>
-    <string name="session_info_assistant">Assistant</string>
-    <string name="session_info_tool_calls">Tool calls</string>
-    <string name="session_info_tool_results">Tool results</string>
-    <string name="session_info_total">Total</string>
-    <string name="session_info_tokens">Tokens</string>
-    <string name="session_info_input">Input</string>
-    <string name="session_info_output">Output</string>
-    <string name="session_info_cache_read">Cache read</string>
-    <string name="session_info_cache_write">Cache write</string>
-    <string name="session_info_spend">Spend</string>
-    <string name="session_info_cost">Cost</string>
-    <string name="session_info_context">Context</string>
-    <string name="chat_git_changes">Git changes</string>
-    <string name="chat_session_title">Session</string>
-
-    <!-- Workspaces / projects -->
-    <string name="ws_settings">Settings</string>
-    <string name="ws_new">New workspace</string>
-    <string name="ws_no_sessions">No sessions yet. Open one on your PC with pi.</string>
-    <string name="ws_meta">%1$d sessions · %2$s</string>
-    <string name="ws_delete_title">Delete workspace?</string>
-    <string name="ws_delete_msg">This will delete %2$d sessions under %1$s. The directory itself is kept; nothing is removed from disk.</string>
-    <string name="ws_deleted">Deleted workspace %1$s</string>
-    <string name="ws_no_sessions_dir">No sessions in this directory</string>
-    <string name="ws_message_count">%1$d messages</string>
-    <string name="ws_delete_session_title">Delete session?</string>
-    <string name="ws_delete_session_msg">This session and all of its history will be permanently deleted.</string>
-    <string name="ws_session_deleted">Session deleted</string>
-    <string name="ws_created">Created workspace %1$s</string>
-    <string name="ws_reused">Reusing workspace %1$s</string>
-    <string name="time_just_now">just now</string>
-    <string name="time_minutes_ago">%1$d minutes ago</string>
-    <string name="time_hours_ago">%1$d hours ago</string>
-    <string name="time_days_ago">%1$d days ago</string>
-    <string name="empty_session_title">(empty session)</string>
-
-    <!-- Tool cards -->
-    <string name="card_thinking">Thinking</string>
-    <!-- Same card while the turn is still reasoning, hence the progressive form. -->
-    <string name="card_thinking_active">Thinking…</string>
-    <string name="card_compacting">Compacting…</string>
-    <string name="tool_result">Tool result</string>
-    <string name="tool_image_truncated">［image, %1$s］</string>
-    <string name="tool_expand_all">Show all (%1$s)</string>
-    <string name="tool_loading_more">Loading… (%1$s)</string>
-
-    <!-- Busy dialog -->
-    <string name="busy_title">Session is running</string>
-    <string name="busy_image_placeholder">［image］</string>
-    <string name="busy_message">“%1$s”\n\nInterrupting delivers this right after the current tool call finishes; queuing delivers it once the whole round completes.</string>
-    <string name="busy_interrupt">Interrupt</string>
-    <string name="busy_queue">Queue</string>
-
-    <!-- Connect / QR -->
-    <string name="conn_title">Connect to PC</string>
-    <string name="conn_subtitle">Run pi-remote-server on your PC — it prints the address and token.\nUse the scanner below and point it at the QR code on screen.</string>
-    <string name="conn_scan">   Scan to connect</string>
-    <string name="conn_address">Address</string>
-    <string name="conn_manual">Manual connect</string>
-    <string name="conn_connected">Connected · server %1$s</string>
-    <string name="conn_protocol_mismatch">Bridge %1$s speaks protocol %2$d, this app speaks %3$d. Upgrade whichever is older.</string>
-    <string name="conn_failed">Connection failed: %1$s</string>
-    <string name="conn_qr_invalid">Not a Pi Remote QR code (scan the one printed by the PC console at startup)</string>
-    <string name="conn_camera_required">Camera permission is required to scan</string>
-    <string name="qr_hint">Point at the QR code printed by the PC console at startup</string>
-    <string name="qr_detail">The server prints the URL, token and QR code at startup</string>
-    <string name="qr_autoconnect">Connects automatically once a QR code is scanned</string>
-    <string name="qr_flashlight">Flashlight</string>
-    <string name="qr_camera_failed">Could not open camera: %1$s</string>
-
-    <!-- Git -->
-    <string name="git_status_failed">Failed to get git status</string>
-    <string name="git_commits_failed">Failed to load commits</string>
-    <string name="git_diff_failed">Failed to load diff</string>
-    <string name="git_detail_failed">Failed to load commit details</string>
-
-    <!-- Notices (system messages in chat) -->
-    <string name="notice_compacted">Context compacted</string>
-    <string name="notice_branch_summary">Branch summary</string>
-    <string name="notice_model_change">Model switched to %1$s</string>
-    <string name="notice_thinking_level">Thinking level: %1$s</string>
-    <string name="notice_session_named">Session named “%1$s”</string>
-
-    <!-- Data-layer errors -->
-    <string name="err_set_title">Failed to set title</string>
-    <string name="err_generate_title">Failed to generate title</string>
-    <string name="err_compact">Failed to compact context</string>
-    <string name="err_load_stats">Failed to load session info</string>
-    <string name="err_abort">Failed to abort</string>
-    <string name="err_unknown">Unknown error</string>
-    <string name="err_unreachable">unreachable</string>
-    <string name="not_loaded">not loaded</string>
-    <string name="err_load_projects">Failed to load projects</string>
-    <string name="err_load_sessions">Failed to load sessions</string>
-    <string name="err_create_session">Failed to create session</string>
-    <string name="err_create_workspace">Failed to create workspace</string>
-    <string name="err_delete">Failed to delete</string>
-    <string name="session_finished">%1$s finished</string>
-
-    <!-- Foreground service -->
-    <string name="fg_running_count">%1$d sessions running</string>
-    <string name="fg_running">Session running</string>
-    <string name="fg_keep_connection">Keeping the connection to your PC alive</string>
-    <string name="fg_running_notif_title">Running</string>
-    <string name="fg_running_notif_text">Keeping the connection while the session runs</string>
-    <string name="fg_done_channel">Finish notifications</string>
-    <string name="fg_done_channel_desc">Notify when a session finishes</string>
+<string name="session">Session</string>
+<string name="session_finished">%1$s finished</string>
+<string name="err_abort">Failed to abort</string>
+<string name="err_set_title">Failed to set title</string>
+<string name="err_generate_title">Failed to generate title</string>
+<string name="err_compact">Failed to compact context</string>
+<string name="err_load_projects">Failed to load projects</string>
+<string name="err_load_sessions">Failed to load sessions</string>
+<string name="err_create_session">Failed to create session</string>
+<string name="err_create_workspace">Failed to create workspace</string>
+<string name="err_delete">Failed to delete</string>
+<string name="err_unreachable">unreachable</string>
+<string name="conn_camera_required">Camera permission is required to scan</string>
+<string name="conn_qr_invalid">Not a Pi Remote QR code (scan the one printed by the PC console at startup)</string>
+<string name="conn_protocol_mismatch">Bridge %1$s speaks protocol %2$d, this app speaks %3$d. Upgrade whichever is older.</string>
+<string name="conn_connected">Connected · server %1$s</string>
+<string name="conn_failed">Connection failed: %1$s</string>
+<string name="conn_scan">   Scan to connect</string>
+<string name="fg_running_count">%1$d sessions running</string>
+<string name="fg_running">Session running</string>
+<string name="fg_keep_connection">Keeping the connection to your PC alive</string>
+<string name="fg_running_notif_title">Running</string>
+<string name="fg_running_notif_text">Keeping the connection while the session runs</string>
+<string name="fg_done_channel">Finish notifications</string>
+<string name="fg_done_channel_desc">Notify when a session finishes</string>
+<string name="qr_camera_failed">Could not open camera: %1$s</string>
+<string name="qr_hint">Point at the QR code printed by the PC console at startup</string>
+<string name="qr_detail">The server prints the URL, token and QR code at startup</string>
+<string name="back">Back</string>
+<string name="qr_autoconnect">Connects automatically once a QR code is scanned</string>
+<string name="qr_flashlight">Flashlight</string>
+<string name="app_name">Pi Remote</string>
 </resources>

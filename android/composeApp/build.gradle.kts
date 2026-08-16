@@ -42,8 +42,12 @@ kotlin {
             implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
             implementation("org.jetbrains.compose.ui:ui:$cmpVersion")
             implementation("org.jetbrains.compose.ui:ui-backhandler:$cmpVersion")
+            implementation(compose.components.resources)
+            implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+            implementation("io.ktor:ktor-client-core:3.3.3")
+            implementation("io.ktor:ktor-client-websockets:3.3.3")
         }
         androidMain.dependencies {
             implementation("org.jetbrains.compose.ui:ui-tooling:$cmpVersion")
@@ -55,10 +59,13 @@ kotlin {
             implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
             implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
             implementation("androidx.datastore:datastore-preferences:1.2.1")
-            implementation("com.squareup.okhttp3:okhttp:4.12.0")
+            implementation("io.ktor:ktor-client-okhttp:3.3.3")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
             implementation("com.journeyapps:zxing-android-embedded:4.3.0")
             implementation("com.mikepenz:multiplatform-markdown-renderer-m3-android:0.43.0")
+        }
+        iosMain.dependencies {
+            implementation("io.ktor:ktor-client-darwin:3.3.3")
         }
         androidUnitTest.dependencies {
             implementation(kotlin("test"))
@@ -115,5 +122,13 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+}
+
+compose {
+    resources {
+        // Make the generated Res class (and its accessors) public so the
+        // commonMain UI code can read Res.string.* from the same module.
+        publicResClass = true
     }
 }

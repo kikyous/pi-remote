@@ -1,8 +1,9 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.piremote.ui
 
-import com.piremote.R
 
-import androidx.activity.compose.BackHandler
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarHost
@@ -18,16 +19,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import com.piremote.data.AppRepository
 import com.piremote.data.Connection
-import com.piremote.data.SettingsStore
-import com.piremote.net.PiRemoteClient
+import com.piremote.platform.PlatformServices
+import com.piremote.platform.createPlatformServices
+import com.piremote.platform.createSettingsStore
 import com.piremote.net.ProjectDto
+import kotlin.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -43,9 +47,9 @@ private sealed interface Screen {
 
 @Composable
 fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val settings = remember { SettingsStore(context) }
+    val settings = remember { createSettingsStore() }
+    val platform: PlatformServices = remember { createPlatformServices() }
     val connectionFlow = remember { MutableStateFlow(Connection.EMPTY) }
     val connection by connectionFlow.collectAsStateWithLifecycle()
     var loaded by remember { mutableStateOf(false) }
@@ -60,7 +64,7 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
     // One repository for the whole process (see AppRepository.get): a fresh
     // one per Activity recreation leaks a WebSocket each time, and the server
     // pushes every update to each connection — doubled streaming output.
-    val repo = remember { AppRepository.get(context) }
+    val repo = remember { AppRepository.get(platform) }
 
     LaunchedEffect(connection) {
         repo.client.baseUrl = connection.baseUrl
@@ -78,6 +82,8 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
     // (e.g. "workspace created"), drawn over whatever is on top.
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
+    val wsCreatedTemplate = stringResource(Res.string.ws_created)
+    val wsReusedTemplate = stringResource(Res.string.ws_reused)
 
     // System back pops the navigation stack instead of exiting the app:
     // Chat → Sessions → Projects. On the root the handler is disabled so the
@@ -125,6 +131,7 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                     initial = connection,
                     onSave = { scope.launch { settings.save(it) } },
                     onCancel = null,
+                    strings = platform.strings,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -143,15 +150,15 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                                 cwd = ws.cwd,
                                 name = ws.cwd.substringAfterLast('/'),
                                 sessionCount = 0,
-                                lastModified = java.time.Instant.now().toString(),
+                                lastModified = Clock.System.now().toString(),
                             )
                             screen = Screen.Chat(ws.id, project)
                             snackbarScope.launch {
                                 snackbarHostState.showSnackbar(
                                     if (ws.created) {
-                                        context.getString(R.string.ws_created, ws.cwd)
+                                        formatTemplate(wsCreatedTemplate, ws.cwd)
                                     } else {
-                                        context.getString(R.string.ws_reused, ws.cwd)
+                                        formatTemplate(wsReusedTemplate, ws.cwd)
                                     },
                                 )
                             }
@@ -205,6 +212,7 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
                 screen = Screen.Projects
             },
             onCancel = { screen = Screen.Projects },
+            strings = platform.strings,
             modifier = Modifier.fillMaxSize(),
         )
             }

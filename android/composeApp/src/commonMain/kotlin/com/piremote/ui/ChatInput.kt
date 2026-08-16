@@ -1,6 +1,7 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.piremote.ui
 
-import com.piremote.R
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -73,7 +74,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
@@ -83,20 +84,18 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.backhandler.BackHandler
+import com.piremote.platform.rememberImagePicker
+import com.piremote.platform.decodeImageScaled
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import com.piremote.net.PromptImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -129,7 +128,7 @@ fun ChatInput(
     onCompact: () -> Unit,
     compacting: Boolean = false,
     onSessionInfo: () -> Unit,
-    onSendImage: (List<android.net.Uri>) -> Unit,
+    onSendImage: (List<PromptImage>) -> Unit,
     attachments: List<PromptImage>,
     onRemoveAttachment: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -212,11 +211,9 @@ fun ChatInput(
 
     // System photo picker, multi-select: no storage permission needed, returns
     // readable Uris. Cap keeps the combined base64 within the server body limit.
-    val pickImages = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACHMENTS),
-    ) { uris ->
+    val pickImages = rememberImagePicker { images ->
         panelOpen = false
-        if (uris.isNotEmpty()) onSendImage(uris)
+        if (images.isNotEmpty()) onSendImage(images)
     }
 
     // Shared by the send button and the Enter key: trim, send, clear.
@@ -254,7 +251,7 @@ fun ChatInput(
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
                 for (message in queued) {
                     Text(
-                        stringResource(R.string.chat_queued, message),
+                        stringResource(Res.string.chat_queued, message),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -318,7 +315,7 @@ fun ChatInput(
                     ) {
                         Icon(
                             if (panelOpen) Icons.Default.Close else Icons.Default.Add,
-                            contentDescription = stringResource(R.string.more),
+                            contentDescription = stringResource(Res.string.more),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp),
                         )
@@ -356,7 +353,7 @@ fun ChatInput(
                             Box {
                                 if (text.isEmpty()) {
                                     Text(
-                                        stringResource(R.string.chat_hint),
+                                        stringResource(Res.string.chat_hint),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodyLarge,
                                     )
@@ -374,7 +371,7 @@ fun ChatInput(
                         ) {
                             Icon(
                                 Icons.Default.Stop,
-                                contentDescription = stringResource(R.string.stop),
+                                contentDescription = stringResource(Res.string.stop),
                                 modifier = Modifier.size(28.dp),
                             )
                         }
@@ -393,7 +390,7 @@ fun ChatInput(
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
-                                contentDescription = stringResource(R.string.send),
+                                contentDescription = stringResource(Res.string.send),
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -420,11 +417,7 @@ fun ChatInput(
                 onGenerateTitle = onGenerateTitle,
                 onCompact = onCompact,
                 onSessionInfo = onSessionInfo,
-                onPickImages = {
-                    pickImages.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
+                onPickImages = { pickImages() },
                 modifier = Modifier.fillMaxWidth().height(with(density) { panelHeight.toDp() }),
             )
         }
@@ -454,29 +447,29 @@ private fun MorePanel(
     )
 
     val cells = buildList {
-        add(Cell(stringResource(R.string.chat_switch_model), Icons.Outlined.SmartToy, onPickModel))
-        onPickThinking?.let { add(Cell(stringResource(R.string.thinking_level), Icons.Outlined.Psychology, it)) }
-        add(Cell(stringResource(R.string.new_session), Icons.Outlined.NoteAdd, onNewSession))
+        add(Cell(stringResource(Res.string.chat_switch_model), Icons.Outlined.SmartToy, onPickModel))
+        onPickThinking?.let { add(Cell(stringResource(Res.string.thinking_level), Icons.Outlined.Psychology, it)) }
+        add(Cell(stringResource(Res.string.new_session), Icons.Outlined.NoteAdd, onNewSession))
         add(
             Cell(
-                if (generatingTitle) stringResource(R.string.generating)
-                else stringResource(R.string.generate_title),
+                if (generatingTitle) stringResource(Res.string.generating)
+                else stringResource(Res.string.generate_title),
                 Icons.Outlined.Title,
                 { if (!generatingTitle) onGenerateTitle() },
                 generating = generatingTitle,
             ),
         )
-        add(Cell(stringResource(R.string.chat_send_image), Icons.Outlined.Image, onPickImages))
+        add(Cell(stringResource(Res.string.chat_send_image), Icons.Outlined.Image, onPickImages))
         add(
             Cell(
-                if (compacting) stringResource(R.string.compacting)
-                else stringResource(R.string.compact_context),
+                if (compacting) stringResource(Res.string.compacting)
+                else stringResource(Res.string.compact_context),
                 Icons.Outlined.Compress,
                 { if (!compacting) onCompact() },
                 generating = compacting,
             ),
         )
-        add(Cell(stringResource(R.string.session_info), Icons.Outlined.Info, onSessionInfo))
+        add(Cell(stringResource(Res.string.session_info), Icons.Outlined.Info, onSessionInfo))
     }
 
     // The grid is centered as a whole; items flow left-to-right inside fixed
@@ -548,28 +541,26 @@ private fun MorePanel(
     }
 }
 
-/** Max images per send: picker cap keeps base64 under the server body limit. */
-private const val MAX_ATTACHMENTS = 5
-
 /** One picked image in the composer's attachment bar, with a remove button. */
 @Composable
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
 private fun AttachmentThumb(image: PromptImage, onRemove: () -> Unit) {
     Box {
-        val bitmap by produceState<Bitmap?>(initialValue = null, image.data) {
+        val bitmap by produceState<ImageBitmap?>(initialValue = null, image.data) {
             // produceState runs on the composition's (main) dispatcher; decode
             // a large base64 payload off the frame.
             value = withContext(Dispatchers.Default) {
                 runCatching {
-                    val bytes = android.util.Base64.decode(image.data, android.util.Base64.NO_WRAP)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val bytes = kotlin.io.encoding.Base64.decode(image.data)
+                    decodeImageScaled(bytes, 256)
                 }.getOrNull()
             }
         }
         val bmp = bitmap
         if (bmp != null) {
             Image(
-                bitmap = bmp.asImageBitmap(),
-                contentDescription = stringResource(R.string.chat_attached_image),
+                bitmap = bmp,
+                contentDescription = stringResource(Res.string.chat_attached_image),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(48.dp)
@@ -598,7 +589,7 @@ private fun AttachmentThumb(image: PromptImage, onRemove: () -> Unit) {
         ) {
             Icon(
                 Icons.Default.Close,
-                contentDescription = stringResource(R.string.chat_remove_attachment),
+                contentDescription = stringResource(Res.string.chat_remove_attachment),
                 tint = Color.White,
                 modifier = Modifier.size(10.dp),
             )

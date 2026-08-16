@@ -1,8 +1,9 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.piremote.ui
 
-import com.piremote.R
 
-import androidx.activity.compose.BackHandler
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,8 +44,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -118,7 +120,7 @@ private fun GitListScreen(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val errStatusFailed = stringResource(Res.string.git_status_failed)
     // One gitStatus fetch feeds both the top-bar branch and the Changes list;
     // fetching it here (instead of once per composable) halves the work when
     // the Changes tab opens and keeps the list state across tab switches.
@@ -132,7 +134,7 @@ private fun GitListScreen(
             status = repo.client.gitStatus(cwd)
             error = null
         } catch (e: Exception) {
-            error = e.message ?: context.getString(R.string.git_status_failed)
+            error = e.message ?: errStatusFailed
         } finally {
             refreshing = false
         }
@@ -146,7 +148,7 @@ private fun GitListScreen(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
                     }
                 },
                 title = {
@@ -240,7 +242,7 @@ private fun ChangesList(
 @Composable
 private fun CommitsList(repo: AppRepository, cwd: String, onOpenCommit: (GitCommitDto) -> Unit) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val errCommitsFailed = stringResource(Res.string.git_commits_failed)
     val listState = rememberLazyListState()
     var commits by remember { mutableStateOf<List<GitCommitDto>>(emptyList()) }
     var nextCursor by remember { mutableStateOf<String?>(null) }
@@ -257,7 +259,7 @@ private fun CommitsList(repo: AppRepository, cwd: String, onOpenCommit: (GitComm
             nextCursor = page.nextCursor
             error = null
         } catch (e: Exception) {
-            if (reset) error = e.message ?: context.getString(R.string.git_commits_failed)
+            if (reset) error = e.message ?: errCommitsFailed
         } finally {
             loading = false
         }
@@ -354,7 +356,7 @@ private fun GitChangeRow(change: GitChangeDto, onClick: () -> Unit) {
 
 @Composable
 private fun GitCommitRow(commit: GitCommitDto, onClick: () -> Unit) {
-    val context = LocalContext.current
+    val toFriendly = rememberFriendlyTime()
     Column(
         Modifier
             .fillMaxWidth()
@@ -378,7 +380,7 @@ private fun GitCommitRow(commit: GitCommitDto, onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                "  ${commit.author} · ${commit.date.toFriendlyTime(context)}",
+                "  ${commit.author} · ${toFriendly(commit.date)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
@@ -431,14 +433,14 @@ private fun GitDiffScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val errDiffFailed = stringResource(Res.string.git_diff_failed)
     var diff by remember { mutableStateOf<GitDiffDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(cwd, path) {
         runCatching { repo.client.gitDiff(cwd, path) }
             .onSuccess { diff = it }
-            .onFailure { error = it.message ?: context.getString(R.string.git_diff_failed) }
+            .onFailure { error = it.message ?: errDiffFailed }
     }
 
     DiffScaffold(
@@ -466,19 +468,20 @@ private fun GitCommitDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val errDetailFailed = stringResource(Res.string.git_detail_failed)
+    val toFriendly = rememberFriendlyTime()
     var detail by remember { mutableStateOf<GitCommitDiffDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(cwd, commit.hash) {
         runCatching { repo.client.gitCommitDiff(cwd, commit.hash) }
             .onSuccess { detail = it }
-            .onFailure { error = it.message ?: context.getString(R.string.git_detail_failed) }
+            .onFailure { error = it.message ?: errDetailFailed }
     }
 
     DiffScaffold(
         title = commit.subject,
-        subtitle = "${commit.shortHash} · ${commit.author} · ${commit.date.toFriendlyTime(context)}",
+        subtitle = "${commit.shortHash} · ${commit.author} · ${toFriendly(commit.date)}",
         onBack = onBack,
         modifier = modifier,
     ) {
@@ -534,7 +537,7 @@ private fun DiffScaffold(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
                     }
                 },
                 title = {

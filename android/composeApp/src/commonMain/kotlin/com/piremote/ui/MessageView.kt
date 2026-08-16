@@ -1,6 +1,7 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.piremote.ui
 
-import com.piremote.R
 
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -56,16 +57,16 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,11 +76,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
+import com.piremote.platform.decodeImageScaled
 import com.piremote.net.BlobDto
 import com.piremote.net.Item
 import com.piremote.net.MoreDto
@@ -149,7 +149,7 @@ private fun UserBlock(
             image?.let { img ->
                 val base64 = expanded[img.ref]
                 // Decode off the frame: produceState runs on the main dispatcher.
-                val bitmap by produceState<Bitmap?>(initialValue = null, base64) {
+                val bitmap by produceState<ImageBitmap?>(initialValue = null, base64) {
                     value = withContext(Dispatchers.Default) {
                         base64?.let { runCatching { decodeBase64Bitmap(it) }.getOrNull() }
                     }
@@ -159,8 +159,8 @@ private fun UserBlock(
                 when {
                     bmp != null -> {
                         Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = stringResource(R.string.image),
+                            bitmap = bmp,
+                            contentDescription = stringResource(Res.string.image),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = if (item.text.s.isNotBlank()) 6.dp else 0.dp)
@@ -438,7 +438,7 @@ private fun ToolRowCard(
     val borderColor = if (error) ToolErrBorder else ToolOkBorder
 
     ToolCallCard(
-        name = tool.name.ifBlank { stringResource(R.string.tool_result) },
+        name = tool.name.ifBlank { stringResource(Res.string.tool_result) },
         nameColor = if (error) ToolErrRed else ToolOkGreen,
         subtitle = tool.title,
         borderColor = borderColor,
@@ -480,8 +480,8 @@ private fun ToolRowCard(
                 if (tool.hasImage) {
                     Text(
                         stringResource(
-                            R.string.tool_image_truncated,
-                            tool.output.more?.displaySize ?: stringResource(R.string.not_loaded),
+                            Res.string.tool_image_truncated,
+                            tool.output.more?.displaySize ?: stringResource(Res.string.not_loaded),
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -641,7 +641,7 @@ internal fun ToolCallCard(
             // Chevron sits at the end and rotates 180° when open (pi-web).
             Icon(
                 Icons.Default.ExpandMore,
-                contentDescription = if (open) stringResource(R.string.collapse) else stringResource(R.string.expand),
+                contentDescription = if (open) stringResource(Res.string.collapse) else stringResource(Res.string.expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.rotate(rotation).size(16.dp),
             )
@@ -676,7 +676,7 @@ internal fun ThinkingCardShell(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                stringResource(if (active) R.string.card_thinking_active else R.string.card_thinking),
+                stringResource(if (active) Res.string.card_thinking_active else Res.string.card_thinking),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -691,11 +691,11 @@ internal fun ThinkingCardShell(
 private fun NoticeBlock(item: Item.Notice, modifier: Modifier) {
     val arg = item.arg.orEmpty()
     val text = when (item.note) {
-        "compaction" -> stringResource(R.string.notice_compacted)
-        "branch" -> stringResource(R.string.notice_branch_summary)
-        "model" -> stringResource(R.string.notice_model_change, arg)
-        "thinking" -> stringResource(R.string.notice_thinking_level, arg)
-        "named" -> stringResource(R.string.notice_session_named, arg)
+        "compaction" -> stringResource(Res.string.notice_compacted)
+        "branch" -> stringResource(Res.string.notice_branch_summary)
+        "model" -> stringResource(Res.string.notice_model_change, arg)
+        "thinking" -> stringResource(Res.string.notice_thinking_level, arg)
+        "named" -> stringResource(Res.string.notice_session_named, arg)
         // "text", and anything a newer bridge invents: show what it sent.
         else -> arg
     }
@@ -714,20 +714,24 @@ private fun NoticeBlock(item: Item.Notice, modifier: Modifier) {
     }
 }
 
-private fun decodeBase64Bitmap(base64: String): Bitmap? = runCatching {
-    val bytes = android.util.Base64.decode(base64, android.util.Base64.NO_WRAP)
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+private fun decodeBase64Bitmap(base64: String): ImageBitmap? = runCatching {
+    val bytes = kotlin.io.encoding.Base64.decode(base64)
+    decodeImageScaled(bytes, MAX_FULL_IMAGE_EDGE)
 }.getOrNull()
+
+/** Longest edge for a full-size message image; thumbs use a smaller cap. */
+private const val MAX_FULL_IMAGE_EDGE = 1536
 
 /**
  * Fullscreen image with pinch-zoom, pan, double-tap to toggle zoom, and a
  * tap on the backdrop (or Back) to close.
  */
 @Composable
-private fun ZoomableImageDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
-    // BackHandler from the activity-compose dependency already powers system
-    // back in this app; the dialog also exposes an explicit close button.
-    androidx.activity.compose.BackHandler(onBack = onDismiss)
+private fun ZoomableImageDialog(bitmap: ImageBitmap, onDismiss: () -> Unit) {
+    // BackHandler powers system back in this app; the dialog also exposes an
+    // explicit close button.
+    androidx.compose.ui.backhandler.BackHandler(onBack = onDismiss)
 
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -761,7 +765,7 @@ private fun ZoomableImageDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Image(
-                bitmap = bitmap.asImageBitmap(),
+                bitmap = bitmap,
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -779,7 +783,7 @@ private fun ZoomableImageDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
             ) {
                 Icon(
                     Icons.Default.Close,
-                    contentDescription = stringResource(R.string.close),
+                    contentDescription = stringResource(Res.string.close),
                     tint = Color.White,
                 )
             }
@@ -843,7 +847,7 @@ private fun ExpandRow(
 ) {
     if (expanded.containsKey(more.ref)) return
     Text(
-        stringResource(R.string.tool_expand_all, more.displaySize),
+        stringResource(Res.string.tool_expand_all, more.displaySize),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.primary,
         modifier = modifier.clickable { onExpand(more.ref) }.padding(top = 4.dp),
@@ -874,7 +878,7 @@ private const val ROW_ARG_LIMIT = 160
 @Composable
 private fun LoadingMore(size: String) {
     Text(
-        stringResource(R.string.tool_loading_more, size),
+        stringResource(Res.string.tool_loading_more, size),
         style = MaterialTheme.typography.labelSmall,
         color = Color.Gray,
         modifier = Modifier.padding(start = 24.dp),

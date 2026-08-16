@@ -1,6 +1,5 @@
 package com.piremote.ui
 
-import com.piremote.R
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -51,13 +50,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.time.Clock
+import kotlin.time.Instant
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.piremote.data.AppRepository
 import com.piremote.net.ProjectDto
@@ -79,7 +80,8 @@ fun ProjectListScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var pendingDelete by remember { mutableStateOf<ProjectDto?>(null) }
-    val context = LocalContext.current
+    val toFriendly = rememberFriendlyTime()
+    val wsDeletedTemplate = stringResource(Res.string.ws_deleted)
 
     LaunchedEffect(Unit) { if (state.projects.isEmpty()) repo.refreshProjects() }
 
@@ -90,7 +92,7 @@ fun ProjectListScreen(
                 title = { Text("Pi Remote") },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.ws_settings))
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(Res.string.ws_settings))
                     }
                 },
             )
@@ -99,7 +101,7 @@ fun ProjectListScreen(
             ExtendedFloatingActionButton(
                 onClick = onNewWorkspace,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text(stringResource(R.string.ws_new)) },
+                text = { Text(stringResource(Res.string.ws_new)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -112,7 +114,7 @@ fun ProjectListScreen(
             if (state.projects.isEmpty() && state.loadingProjects) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else if (state.projects.isEmpty()) {
-                EmptyHint(state.error ?: stringResource(R.string.ws_no_sessions))
+                EmptyHint(state.error ?: stringResource(Res.string.ws_no_sessions))
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(state.projects, key = { it.cwd }) { project ->
@@ -136,7 +138,7 @@ fun ProjectListScreen(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    stringResource(R.string.ws_meta, project.sessionCount, project.lastModified.toFriendlyTime(context)),
+                                    stringResource(Res.string.ws_meta, project.sessionCount, toFriendly(project.lastModified)),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -152,20 +154,20 @@ fun ProjectListScreen(
     pendingDelete?.let { project ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text(stringResource(R.string.ws_delete_title)) },
-            text = { Text(stringResource(R.string.ws_delete_msg, project.name, project.sessionCount)) },
+            title = { Text(stringResource(Res.string.ws_delete_title)) },
+            text = { Text(stringResource(Res.string.ws_delete_msg, project.name, project.sessionCount)) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = null
                     repo.deleteWorkspace(project.cwd) { error ->
                         scope.launch {
-                            snackbar.showSnackbar(error ?: context.getString(R.string.ws_deleted, project.name))
+                            snackbar.showSnackbar(error ?: formatTemplate(wsDeletedTemplate, project.name))
                         }
                     }
-                }) { Text(stringResource(R.string.delete)) }
+                }) { Text(stringResource(Res.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(Res.string.cancel)) }
             },
         )
     }
@@ -186,7 +188,8 @@ fun SessionListScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var pendingDelete by remember { mutableStateOf<SessionSummaryDto?>(null) }
-    val context = LocalContext.current
+    val toFriendly = rememberFriendlyTime()
+    val wsSessionDeleted = stringResource(Res.string.ws_session_deleted)
 
     Scaffold(
         modifier = modifier,
@@ -194,7 +197,7 @@ fun SessionListScreen(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
                     }
                 },
                 title = {
@@ -215,7 +218,7 @@ fun SessionListScreen(
             ExtendedFloatingActionButton(
                 onClick = { repo.createSession(project.cwd, onOpenNewSession) },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text(stringResource(R.string.new_session)) },
+                text = { Text(stringResource(Res.string.new_session)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -228,7 +231,7 @@ fun SessionListScreen(
             if (state.sessions.isEmpty() && state.loadingSessions) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else if (state.sessions.isEmpty()) {
-                EmptyHint(state.error ?: stringResource(R.string.ws_no_sessions_dir))
+                EmptyHint(state.error ?: stringResource(Res.string.ws_no_sessions_dir))
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(state.sessions, key = { it.id }) { session ->
@@ -240,19 +243,19 @@ fun SessionListScreen(
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                             ) {
                                 Text(
-                                    session.displayTitle.ifBlank { stringResource(R.string.empty_session_title) },
+                                    session.displayTitle.ifBlank { stringResource(Res.string.empty_session_title) },
                                     style = MaterialTheme.typography.bodyLarge,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(
-                                        stringResource(R.string.ws_message_count, session.messageCount),
+                                        stringResource(Res.string.ws_message_count, session.messageCount),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     Text(
-                                        session.modified.toFriendlyTime(context),
+                                        toFriendly(session.modified),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -269,20 +272,20 @@ fun SessionListScreen(
     pendingDelete?.let { session ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text(stringResource(R.string.ws_delete_session_title)) },
-            text = { Text(stringResource(R.string.ws_delete_session_msg)) },
+            title = { Text(stringResource(Res.string.ws_delete_session_title)) },
+            text = { Text(stringResource(Res.string.ws_delete_session_msg)) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = null
                     repo.deleteSession(session.id, project.cwd) { error ->
                         scope.launch {
-                            snackbar.showSnackbar(error ?: context.getString(R.string.ws_session_deleted))
+                            snackbar.showSnackbar(error ?: wsSessionDeleted)
                         }
                     }
-                }) { Text(stringResource(R.string.delete)) }
+                }) { Text(stringResource(Res.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(Res.string.cancel)) }
             },
         )
     }
@@ -325,7 +328,7 @@ private fun SwipeRevealAction(
             ) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = stringResource(R.string.delete),
+                    contentDescription = stringResource(Res.string.delete),
                     tint = Color.White,
                 )
             }
@@ -378,18 +381,27 @@ private fun BoxScope.EmptyHint(text: String) {
 }
 
 /** ISO timestamp → something readable at a glance. */
-fun String.toFriendlyTime(context: android.content.Context): String {
-    val instant = runCatching { java.time.Instant.parse(this) }.getOrNull() ?: return this
-    val now = java.time.Instant.now()
-    val minutes = java.time.Duration.between(instant, now).toMinutes()
-    return when {
-        minutes < 1 -> context.getString(R.string.time_just_now)
-        minutes < 60 -> context.getString(R.string.time_minutes_ago, minutes)
-        minutes < 60 * 24 -> context.getString(R.string.time_hours_ago, minutes / 60)
-        minutes < 60 * 24 * 30 -> context.getString(R.string.time_days_ago, minutes / (60 * 24))
-        else -> java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
-            .withZone(java.time.ZoneId.systemDefault())
-            .format(instant)
+@Composable
+fun rememberFriendlyTime(): (String) -> String {
+    val justNow = stringResource(Res.string.time_just_now)
+    val minutesAgo = stringResource(Res.string.time_minutes_ago)
+    val hoursAgo = stringResource(Res.string.time_hours_ago)
+    val daysAgo = stringResource(Res.string.time_days_ago)
+    return { iso ->
+        val instant = runCatching { Instant.parse(iso) }.getOrNull()
+        if (instant == null) {
+            iso
+        } else {
+            val minutes = (Clock.System.now() - instant).inWholeMinutes
+            when {
+                minutes < 1 -> justNow
+                minutes < 60 -> formatTemplate(minutesAgo, minutes)
+                minutes < 60 * 24 -> formatTemplate(hoursAgo, minutes / 60)
+                minutes < 60 * 24 * 30 -> formatTemplate(daysAgo, minutes / (60 * 24))
+                // ISO date prefix (yyyy-MM-dd) — close enough without a timezone DB.
+                else -> iso.take(10)
+            }
+        }
     }
 }
 

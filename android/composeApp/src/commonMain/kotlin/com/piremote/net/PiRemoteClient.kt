@@ -1,21 +1,26 @@
 package com.piremote.net
 
-import android.util.Base64
+import com.piremote.platform.createPlatformHttpClient
+import io.ktor.client.HttpClient
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.patch
+import io.ktor.client.request.post
+import io.ktor.client.request.request
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import java.io.IOException
-import java.util.concurrent.TimeUnit
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /** Talks to pi-remote-server over HTTP. The WebSocket lives in [EventSocket]. */
 class PiRemoteClient(
@@ -28,14 +33,10 @@ class PiRemoteClient(
         encodeDefaults = true
     }
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        // The WebSocket shares this client and must not be reaped mid-run.
-        .pingInterval(20, TimeUnit.SECONDS)
-        .build()
+    private val http: HttpClient = createPlatformHttpClient()
 
-    fun okHttp(): OkHttpClient = http
+    /** The shared client; the WebSocket rides on it too. */
+    fun httpClient(): HttpClient = http
 
     /* ---------------- endpoints ---------------- */
 
@@ -178,54 +179,58 @@ class PiRemoteClient(
     }
 
     private suspend inline fun <reified T> get(path: String): T =
-        request(Request.Builder().url(url(path)).get())
+        request { this.method = HttpMethod.Get; url(url(path)) }
 
     private suspend inline fun <reified T> post(path: String, body: String, readTimeoutSeconds: Long = 0): T =
-        request(Request.Builder().url(url(path)).post(body.toRequestBody(JSON_MEDIA)), readTimeoutSeconds)
+        request(readTimeoutSeconds) {
+            this.method = HttpMethod.Post
+            url(url(path))
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
     private suspend inline fun <reified T> patch(path: String, body: String): T =
-        request(Request.Builder().url(url(path)).patch(body.toRequestBody(JSON_MEDIA)))
+        request {
+            this.method = HttpMethod.Patch
+            url(url(path))
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
     private suspend inline fun <reified T> delete(path: String): T =
-        request(Request.Builder().url(url(path)).delete())
+        request { this.method = HttpMethod.Delete; url(url(path)) }
 
-    private suspend inline fun <reified T> request(builder: Request.Builder, readTimeoutSeconds: Long = 0): T {
-        val text = execute(builder.header("Authorization", "Bearer $token").build(), readTimeoutSeconds)
+    private suspend inline fun <reified T> request(
+        readTimeoutSeconds: Long = 0,
+        noinline configure: HttpRequestBuilder.() -> Unit,
+    ): T {
+        val text = execute(readTimeoutSeconds, configure)
         return withContext(Dispatchers.Default) { json.decodeFromString(text) }
     }
 
     private fun url(path: String) = "${baseUrl.trimEnd('/')}/api/v1/$path"
 
     /**
-     * Runs the call off the main thread and converts error bodies to [ApiException].
+     * Performs the request, converting error bodies to [ApiException].
      *
-     * @param readTimeoutSeconds Overrides the shared 30s read timeout for this one
-     *   call. `newBuilder()` keeps the connection pool and dispatcher, so the
-     *   derived client costs nothing beyond the object itself.
+     * @param readTimeoutSeconds Overrides the shared 30s read timeout for this
+     *   one call via `withTimeout` (the compaction call outlasts the default).
      */
-    private suspend fun execute(request: Request, readTimeoutSeconds: Long = 0): String = suspendCancellableCoroutine { cont ->
-        val client =
-            if (readTimeoutSeconds > 0) http.newBuilder().readTimeout(readTimeoutSeconds, TimeUnit.SECONDS).build()
-            else http
-        val call = client.newCall(request)
-        cont.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                if (cont.isActive) cont.resumeWithException(e)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    val body = it.body?.string().orEmpty()
-                    if (!cont.isActive) return
-                    if (it.isSuccessful) {
-                        cont.resume(body)
-                    } else {
-                        cont.resumeWithException(toApiException(it.code, body))
-                    }
-                }
-            }
-        })
+    private suspend fun execute(
+        readTimeoutSeconds: Long = 0,
+        configure: HttpRequestBuilder.() -> Unit,
+    ): String {
+        val builder = HttpRequestBuilder().apply {
+            header("Authorization", "Bearer $token")
+            configure()
+        }
+        val call: suspend () -> String = {
+            val response = http.request(builder)
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toApiException(response.status.value, body)
+            body
+        }
+        return if (readTimeoutSeconds > 0) withTimeout(readTimeoutSeconds * 1000) { call() } else call()
     }
 
     private fun toApiException(status: Int, body: String): ApiException {
@@ -264,16 +269,31 @@ class PiRemoteClient(
     }
 
     private companion object {
-        val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
-
         /** Matches the server's own compaction deadline, with room for the round trip. */
         const val COMPACT_READ_TIMEOUT_S = 310L
     }
 }
 
-/** The server takes `cwd` as base64url so paths survive the query string intact. */
+/**
+ * The server takes `cwd` as base64url so paths survive the query string intact.
+ */
+@OptIn(ExperimentalEncodingApi::class)
 fun encodeCwd(cwd: String): String =
-    Base64.encodeToString(cwd.toByteArray(), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    Base64.UrlSafe
+        .withPadding(Base64.PaddingOption.ABSENT)
+        .encode(cwd.encodeToByteArray())
 
-private fun String.urlEncoded(): String =
-    java.net.URLEncoder.encode(this, "UTF-8")
+/** Percent-encode a value for use in a query string (UTF-8). */
+private fun String.urlEncoded(): String = buildString {
+    for (b in this@urlEncoded.encodeToByteArray()) {
+        val v = b.toInt() and 0xFF
+        val c = v.toChar()
+        if (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '-' || c == '_' || c == '.' || c == '~') {
+            append(c)
+        } else {
+            append('%')
+            append("0123456789ABCDEF"[v shr 4])
+            append("0123456789ABCDEF"[v and 0xF])
+        }
+    }
+}

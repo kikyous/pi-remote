@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.piremote.platform.AndroidApp
 import com.piremote.service.AgentForegroundService
 import com.piremote.ui.PiRemoteApp
 import com.piremote.ui.PiRemoteTheme
@@ -22,6 +23,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        AndroidApp.attach(this)
         AgentForegroundService.ensureChannels(this)
 
         setContent {

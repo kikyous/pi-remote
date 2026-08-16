@@ -1,7 +1,5 @@
 package com.piremote.data
 
-import com.piremote.R
-
 import com.piremote.net.EventSocket
 import com.piremote.net.ModelDto
 import com.piremote.net.PiRemoteClient
@@ -9,7 +7,8 @@ import com.piremote.net.ProjectDto
 import com.piremote.net.SessionSummaryDto
 import com.piremote.net.WorkspaceDto
 import com.piremote.net.SocketStatus
-import com.piremote.service.AgentForegroundService
+import com.piremote.platform.PlatformServices
+import com.piremote.platform.watchNetworkChanges
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,14 +43,7 @@ data class BrowseState(
 class AppRepository(
     val client: PiRemoteClient,
     private val scope: CoroutineScope,
-    /**
-     * Application context, used to drive the foreground service.
-     *
-     * Deliberately not done from Compose: `collectAsStateWithLifecycle` stops
-     * collecting once the app is backgrounded, which is exactly when the
-     * service needs to start. Service lifetime must not depend on the UI.
-     */
-    private val appContext: android.content.Context,
+    private val platform: PlatformServices,
 ) {
     companion object {
         @Volatile
@@ -68,13 +60,12 @@ class AppRepository(
          * mutable fields already allow changing the connection without
          * rebuilding, so one instance for the process is all there should be.
          */
-        fun get(context: android.content.Context): AppRepository {
+        fun get(platform: PlatformServices): AppRepository {
             instance?.let { return it }
             synchronized(this) {
                 instance?.let { return it }
-                val app = context.applicationContext
                 val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-                val repo = AppRepository(PiRemoteClient("", ""), scope, app)
+                val repo = AppRepository(PiRemoteClient("", ""), scope, platform)
                 instance = repo
                 return repo
             }
@@ -114,6 +105,10 @@ class AppRepository(
                 existingStore(id)?.apply(push)
             }
         }
+
+        // Reconnect the socket as soon as the network comes back. The
+        // callback itself only acts when a session is being followed.
+        watchNetworkChanges { socket.reconnectNow() }
     }
 
     /**
@@ -142,20 +137,20 @@ class AppRepository(
 
         updateRunning { it - sessionId }
         val store = existingStore(sessionId)
+        val strings = platform.strings
         val finished = FinishedRun(
             sessionId = sessionId,
             title = store?.state?.value?.detail?.name
                 ?: store?.state?.value?.detail?.firstMessage?.take(40)
-                ?: appContext.getString(R.string.session),
+                ?: strings.session,
             preview = store?.lastAssistantText().orEmpty(),
         )
         _finished.tryEmit(finished)
         // Posted here, not from Compose, for the same reason the service is: the app
         // is usually backgrounded by now.
-        AgentForegroundService.notifyFinished(
-            appContext,
+        platform.notifyFinished(
             finished.sessionId,
-            appContext.getString(R.string.session_finished, finished.title),
+            strings.sessionFinished(finished.title),
             finished.preview,
         )
     }
@@ -164,21 +159,19 @@ class AppRepository(
      * Update the running set and keep the foreground service in step with it.
      *
      * The service exists only while something is running, so a backgrounded app
-     * is not kept alive for nothing.
+     * is not kept alive for nothing. On iOS this is a no-op: there is no
+     * foreground service, the socket simply pauses in the background and the
+     * ON_START reconnect + resync catches up on return.
      */
     private fun updateRunning(transform: (Set<String>) -> Set<String>) {
         val next = transform(_running.value)
         if (next == _running.value) return
         _running.value = next
         if (next.isEmpty()) {
-            runCatching { AgentForegroundService.stop(appContext) }
+            runCatching { platform.stopForeground() }
         } else {
-            // startForegroundService() itself can throw
-            // ForegroundServiceStartNotAllowedException when the system refuses
-            // a background start. The run continues either way — only the
-            // keep-alive is lost — so the crash must not propagate.
-            runCatching { AgentForegroundService.start(appContext, next.size) }
-                .onFailure { android.util.Log.w("PiRemote", "foreground service start refused: ${it.message}") }
+            runCatching { platform.startForeground(next.size) }
+                .onFailure { println("W/PiRemote: foreground start refused: ${it.message}") }
         }
     }
 
@@ -187,10 +180,7 @@ class AppRepository(
         synchronized(stores) { stores[sessionId] }
 
     /** Start following a session's live events; call [stopFollowing] when done. */
-    fun startFollowing(sessionId: String) {
-        socket.watchNetwork(appContext)
-        socket.follow(sessionId)
-    }
+    fun startFollowing(sessionId: String) = socket.follow(sessionId)
 
     fun stopFollowing(sessionId: String) = socket.unfollow(sessionId)
 
@@ -199,7 +189,7 @@ class AppRepository(
             stores[sessionId] = existing
             return existing
         }
-        val created = SessionStore(sessionId, client, scope, appContext, socket::resync)
+        val created = SessionStore(sessionId, client, scope, platform.strings, socket::resync)
         stores[sessionId] = created
         while (stores.size > MAX_CACHED_SESSIONS) {
             val oldest = stores.keys.first()
@@ -215,7 +205,7 @@ class AppRepository(
                 val projects = client.listProjects()
                 _browse.update { it.copy(projects = projects, loadingProjects = false) }
             } catch (e: Exception) {
-                _browse.update { it.copy(loadingProjects = false, error = e.message ?: appContext.getString(R.string.err_load_projects)) }
+                _browse.update { it.copy(loadingProjects = false, error = e.message ?: platform.strings.errLoadProjects) }
             }
         }
     }
@@ -235,7 +225,7 @@ class AppRepository(
                 if (_browse.value.selectedCwd != cwd) return@launch
                 _browse.update { it.copy(sessions = sessions, loadingSessions = false) }
             } catch (e: Exception) {
-                _browse.update { it.copy(loadingSessions = false, error = e.message ?: appContext.getString(R.string.err_load_sessions)) }
+                _browse.update { it.copy(loadingSessions = false, error = e.message ?: platform.strings.errLoadSessions) }
             }
         }
     }
@@ -261,7 +251,7 @@ class AppRepository(
                 refreshSessions(cwd)
                 onCreated(created.id)
             } catch (e: Exception) {
-                _browse.update { it.copy(error = e.message ?: appContext.getString(R.string.err_create_session)) }
+                _browse.update { it.copy(error = e.message ?: platform.strings.errCreateSession) }
             }
         }
     }
@@ -277,7 +267,7 @@ class AppRepository(
                 refreshProjects()
                 onCreated(ws)
             } catch (e: Exception) {
-                _browse.update { it.copy(error = e.message ?: appContext.getString(R.string.err_create_workspace)) }
+                _browse.update { it.copy(error = e.message ?: platform.strings.errCreateWorkspace) }
             }
         }
     }
@@ -290,7 +280,7 @@ class AppRepository(
                 refreshSessions(cwd)
                 onResult(null)
             } catch (e: Exception) {
-                onResult(e.message ?: appContext.getString(R.string.err_delete))
+                onResult(e.message ?: platform.strings.errDelete)
             }
         }
     }
@@ -303,7 +293,7 @@ class AppRepository(
                 refreshProjects()
                 onResult(null)
             } catch (e: Exception) {
-                onResult(e.message ?: appContext.getString(R.string.err_delete))
+                onResult(e.message ?: platform.strings.errDelete)
             }
         }
     }

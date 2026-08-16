@@ -1,6 +1,5 @@
 package com.piremote.ui
 
-import com.piremote.R
 
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -48,15 +47,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
+import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
 import com.piremote.data.SessionStore
 import com.piremote.net.Item
 import com.piremote.net.ModelDto
@@ -91,9 +86,12 @@ fun ChatScreen(
 ) {
     val state by store.state.collectAsStateWithLifecycle()
     val attachments by store.attachments.collectAsStateWithLifecycle()
+    val strSessionRunning = stringResource(Res.string.chat_session_running)
+    val strTitleGenerated = stringResource(Res.string.chat_title_generated)
+    val strCompacted = stringResource(Res.string.chat_compacted)
+    val strImageReadFailed = stringResource(Res.string.chat_image_read_failed)
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
-    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // reverseLayout pins the newest content at the bottom for free only while
@@ -213,7 +211,7 @@ fun ChatScreen(
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.back))
                     }
                 },
                 title = {
@@ -221,7 +219,7 @@ fun ChatScreen(
                         Text(
                             state.detail?.name?.takeIf { it.isNotBlank() }
                                 ?: state.detail?.firstMessage?.lineSequence()?.firstOrNull()?.take(40)
-                                ?: stringResource(R.string.chat_session_title),
+                                ?: stringResource(Res.string.chat_session_title),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium,
@@ -235,7 +233,7 @@ fun ChatScreen(
                                     state.status.context?.percent?.let {
                                         append(" · Context ${it.roundToInt()}%")
                                     }
-                                    if (state.status.running) append(ctx.getString(R.string.chat_session_running))
+                                    if (state.status.running) append(strSessionRunning)
                                 },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -247,10 +245,10 @@ fun ChatScreen(
                 },
                 actions = {
                     IconButton(onClick = onOpenGit) {
-                        Icon(Icons.Outlined.Commit, contentDescription = stringResource(R.string.chat_git_changes))
+                        Icon(Icons.Outlined.Commit, contentDescription = stringResource(Res.string.chat_git_changes))
                     }
                     IconButton(onClick = { store.refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(Res.string.refresh))
                     }
                 },
             )
@@ -284,7 +282,7 @@ fun ChatScreen(
                     onGenerateTitle = {
                         store.generateTitle { title, err ->
                             scope.launch {
-                                snackbar.showSnackbar(err ?: ctx.getString(R.string.chat_title_generated, title))
+                                snackbar.showSnackbar(err ?: formatTemplate(strTitleGenerated, title))
                             }
                         }
                     },
@@ -293,8 +291,8 @@ fun ChatScreen(
                         store.compact { result, err ->
                             scope.launch {
                                 snackbar.showSnackbar(
-                                    err ?: ctx.getString(
-                                        R.string.chat_compacted,
+                                    err ?: formatTemplate(
+                                        strCompacted,
                                         formatTokens(result?.tokensBefore),
                                         formatTokens(result?.tokensAfter),
                                     ),
@@ -306,15 +304,13 @@ fun ChatScreen(
                     // started, or one pi kicked off on its own.
                     compacting = state.compacting || state.status.compacting,
                     onSessionInfo = { sheet = SessionSheet.Info },
-                    onSendImage = { uris ->
-                        // 方案 A：先挂到附件预览条，配文字后一起发送。
-                        scope.launch {
-                            val images = uris.mapNotNull { loadPromptImage(ctx, it) }
-                            if (images.isNotEmpty()) {
-                                images.forEach(store::addAttachment)
-                            } else {
-                                snackbar.showSnackbar(ctx.getString(R.string.chat_image_read_failed))
-                            }
+                    onSendImage = { images ->
+                        // Picked images land on the attachment preview bar, to be
+                        // sent together with the text.
+                        if (images.isNotEmpty()) {
+                            images.forEach(store::addAttachment)
+                        } else {
+                            scope.launch { snackbar.showSnackbar(strImageReadFailed) }
                         }
                     },
                     attachments = attachments,
@@ -351,7 +347,7 @@ fun ChatScreen(
 
                 state.items.isEmpty() ->
                     Text(
-                        stringResource(R.string.chat_empty),
+                        stringResource(Res.string.chat_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.Center),
                     )
@@ -412,8 +408,8 @@ fun ChatScreen(
                                 }
                                 Text(
                                     stringResource(
-                                        if (state.loadingOlder) R.string.chat_loading_earlier
-                                        else R.string.chat_earlier_messages,
+                                        if (state.loadingOlder) Res.string.chat_loading_earlier
+                                        else Res.string.chat_earlier_messages,
                                     ),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -489,7 +485,7 @@ private fun formatTokens(tokens: Int?): String = when {
 @Composable
 private fun CompactingLine() {
     Text(
-        stringResource(R.string.card_compacting),
+        stringResource(Res.string.card_compacting),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 16.dp),
@@ -514,7 +510,7 @@ private fun WaitingPulseLine() {
         label = "waiting-pulse-alpha",
     )
     Text(
-        stringResource(R.string.chat_waiting_model),
+        stringResource(Res.string.chat_waiting_model),
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
         modifier = Modifier
@@ -523,61 +519,3 @@ private fun WaitingPulseLine() {
     )
 }
 
-/**
- * Read a picked image and turn it into a [PromptImage].
- *
- * Runs off the main thread; large photos are scaled down to [MAX_IMAGE_EDGE]
- * and re-encoded so the base64 payload stays within reason for the model API.
- */
-private suspend fun loadPromptImage(context: Context, uri: Uri): PromptImage? =
-    withContext(Dispatchers.IO) {
-        runCatching {
-            val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return@withContext null
-            val bitmap = decodeScaled(bytes, MAX_IMAGE_EDGE)
-                ?: return@withContext null
-            val out = ByteArrayOutputStream()
-            val png = mime.contains("png")
-            bitmap.compress(
-                if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
-                IMAGE_QUALITY,
-                out,
-            )
-            PromptImage(
-                data = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP),
-                mimeType = if (png) "image/png" else "image/jpeg",
-            )
-        }.getOrNull()
-    }
-
-/**
- * Decode with `inSampleSize` so a huge photo never materialises at full
- * resolution (a 48MP shot is ~192MB of pixels) before being scaled down.
- */
-private fun decodeScaled(bytes: ByteArray, maxEdge: Int): Bitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    var sample = 1
-    while (bounds.outWidth / (sample * 2) >= maxEdge && bounds.outHeight / (sample * 2) >= maxEdge) {
-        sample *= 2
-    }
-    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
-        ?: return null
-    return scaleDown(bitmap, maxEdge)
-}
-
-private fun scaleDown(bitmap: Bitmap, maxEdge: Int): Bitmap {
-    val longest = maxOf(bitmap.width, bitmap.height)
-    if (longest <= maxEdge) return bitmap
-    val scale = maxEdge.toFloat() / longest
-    return Bitmap.createScaledBitmap(
-        bitmap,
-        (bitmap.width * scale).toInt(),
-        (bitmap.height * scale).toInt(),
-        true,
-    )
-}
-
-private const val MAX_IMAGE_EDGE = 2048
-private const val IMAGE_QUALITY = 85
