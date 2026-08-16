@@ -175,24 +175,6 @@ actual fun rememberImagePicker(onPicked: (List<PromptImage>) -> Unit): () -> Uni
     return { }
 }
 
-/* ---------------- QR scanner ---------------- */
-
-@Composable
-actual fun QrScanButton(onRequestScan: () -> Unit, modifier: Modifier) {
-    // v1: no camera scanner on iOS — manual entry only (ConnectScreen).
-    // TODO(v2): AVFoundation AVCaptureMetadataOutput wrapper.
-}
-
-@Composable
-actual fun QrScannerHost(
-    onScanned: (String) -> Unit,
-    onDismiss: () -> Unit,
-    modifier: Modifier,
-) {
-    // Unreachable in v1: QrScanButton renders nothing on iOS, so the caller
-    // never switches to the host.
-}
-
 /* ---------------- dynamic color ---------------- */
 
 @Composable
