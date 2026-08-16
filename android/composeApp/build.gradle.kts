@@ -66,6 +66,9 @@ kotlin {
         }
         iosMain.dependencies {
             implementation("io.ktor:ktor-client-darwin:3.3.3")
+            // DataStore ships native artifacts, so the same settings store works
+            // on iOS (PreferenceDataStoreFactory.createWithPath, Platform.ios.kt).
+            implementation("androidx.datastore:datastore-preferences:1.2.1")
         }
         androidUnitTest.dependencies {
             implementation(kotlin("test"))

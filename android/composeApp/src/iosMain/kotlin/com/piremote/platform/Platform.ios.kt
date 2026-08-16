@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.piremote.platform
 
 import androidx.compose.material3.ColorScheme
@@ -22,7 +24,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.SamplingMode
+import okio.Path.Companion.toPath
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
@@ -98,7 +106,7 @@ actual fun createSettingsStore(): SettingsStore {
             .URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, false, null)
             ?.path
             ?: error("no document directory")
-        "$docs/pi_remote_settings.preferences_pb"
+        "$docs/pi_remote_settings.preferences_pb".toPath()
     }
     val urlKey = stringPreferencesKey("base_url")
     val tokenKey = stringPreferencesKey("token")
@@ -128,13 +136,19 @@ actual fun watchNetworkChanges(onNetworkUp: () -> Unit) {
 actual fun decodeImageScaled(bytes: ByteArray, maxEdge: Int): ImageBitmap? = runCatching {
     val image = Image.makeFromEncoded(bytes) ?: return null
     val longest = maxOf(image.width, image.height)
-    val scaled = if (longest > maxEdge) {
-        val scale = maxEdge.toFloat() / longest
-        image.scale((image.width * scale).toInt(), (image.height * scale).toInt())
-    } else {
-        image
+    if (longest <= maxEdge) return image.toComposeImageBitmap()
+
+    // skiko has no Image.scale; draw through a raster Pixmap instead (the
+    // Android actual uses BitmapFactory.inSampleSize, iOS has no such API).
+    val scale = maxEdge.toFloat() / longest
+    val w = maxOf(1, (image.width * scale).toInt())
+    val h = maxOf(1, (image.height * scale).toInt())
+    val dst = Bitmap().apply {
+        allocPixels(ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.PREMUL))
     }
-    scaled.toComposeImageBitmap()
+    val pixmap = dst.peekPixels() ?: return null
+    image.scalePixels(pixmap, SamplingMode.LINEAR, false)
+    Image.makeFromBitmap(dst).toComposeImageBitmap()
 }.getOrNull()
 
 // TODO(v2): read the platform modifier state; Android reads the native key event.

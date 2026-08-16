@@ -1,5 +1,8 @@
 pluginManagement {
     repositories {
+        // dl.google.com (the default google() endpoint) is unreachable from
+        // this network; Aliyun mirrors Google Maven and Maven Central.
+        maven("https://maven.aliyun.com/repository/google")
         google()
         // Direct Maven Central is IP-blocked on this machine; Aliyun mirrors it.
         maven("https://maven.aliyun.com/repository/central")
@@ -11,8 +14,8 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven("https://maven.aliyun.com/repository/google")
         google()
-        // Direct Maven Central is IP-blocked on this machine; Aliyun mirrors it.
         maven("https://maven.aliyun.com/repository/central")
         mavenCentral()
         // MarkdownText needs JitPack-hosted artifacts.

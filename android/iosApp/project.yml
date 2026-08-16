@@ -1,0 +1,52 @@
+name: iosApp
+options:
+  bundleIdPrefix: com.piremote
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.9"
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      - iosApp
+    info:
+      path: iosApp/Info.plist
+      properties:
+        CFBundleDisplayName: Pi Remote CMP
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Scan-to-connect is v2 on iOS; the camera permission is declared now so
+        # adding the AVFoundation scanner later needs no store review dance.
+        NSCameraUsageDescription: Scans the QR code printed by pi-remote-server on your PC to connect.
+        # iOS 14+ local-network privacy: connecting to pi-remote-server over
+        # the LAN (http://192.168.x.x) is blocked without this prompt.
+        NSLocalNetworkUsageDescription: Connects to pi-remote-server running on your PC over the local network.
+        # The bridge is plain http on the LAN; iOS ATS blocks cleartext by
+        # default, so opt local networking out (LAN traffic only, never the WAN).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.piremote.cmp.ios
+        PRODUCT_NAME: PiRemoteCMP
+        TARGETED_DEVICE_FAMILY: "1"
+        FRAMEWORK_SEARCH_PATHS: $(inherited) $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS: $(inherited) -framework PiRemote
+        # The Kotlin Gradle script phase writes into the build dir; the
+        # default sandbox would block it.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      - name: Compile Kotlin framework
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false
