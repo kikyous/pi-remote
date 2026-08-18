@@ -45,8 +45,11 @@ private sealed interface Screen {
     data object Settings : Screen
 }
 
+/** A completion-notification deep link: the session to open, and its project dir. */
+data class DeepLink(val sessionId: String, val cwd: String)
+
 @Composable
-fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
+fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val settings = remember { createSettingsStore() }
     val platform: PlatformServices = remember { createPlatformServices() }
@@ -114,12 +117,21 @@ fun PiRemoteApp(openSessionId: String? = null, modifier: Modifier = Modifier) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Opened from a completion notification.
-    LaunchedEffect(openSessionId) {
-        val id = openSessionId ?: return@LaunchedEffect
-        val cwd = repo.browse.value.sessions.firstOrNull { it.id == id }?.cwd
-        val project = repo.browse.value.projects.firstOrNull { it.cwd == cwd }
-        if (project != null) screen = Screen.Chat(id, project)
+    // Opened from a completion notification. The intent carries the session's
+    // project dir, so resolution only needs the project list — wait for it to
+    // load, then jump. The id is consumed on success so a later refresh
+    // (e.g. workspace created) does not yank the user back.
+    val browseState by repo.browse.collectAsStateWithLifecycle()
+    var resolvedDeepLink by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(deepLink, browseState.projects) {
+        val link = deepLink ?: return@LaunchedEffect
+        if (resolvedDeepLink == link.sessionId) return@LaunchedEffect
+        val project = browseState.projects.firstOrNull { it.cwd == link.cwd } ?: return@LaunchedEffect
+        resolvedDeepLink = link.sessionId
+        // Back from the chat lands on this project's session list, so select it
+        // exactly like a normal browse would.
+        repo.selectProject(project.cwd)
+        screen = Screen.Chat(link.sessionId, project)
     }
 
     if (!loaded) return

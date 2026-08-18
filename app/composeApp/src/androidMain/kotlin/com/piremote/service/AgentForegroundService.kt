@@ -82,7 +82,7 @@ class AgentForegroundService : Service() {
             .setSmallIcon(R.drawable.ic_stat_pi)
             .setOngoing(true)
             .setSilent(true)
-            .setContentIntent(openAppIntent(this, null))
+            .setContentIntent(openAppIntent(this, null, null))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
@@ -128,14 +128,14 @@ class AgentForegroundService : Service() {
          * Tell the user a run finished. Notification id is derived from the
          * session so a second completion replaces the first rather than piling up.
          */
-        fun notifyFinished(context: Context, sessionId: String, title: String, preview: String) {
+        fun notifyFinished(context: Context, sessionId: String, cwd: String?, title: String, preview: String) {
             val notification = NotificationCompat.Builder(context, CHANNEL_DONE)
                 .setContentTitle(title)
                 .setContentText(preview.take(120))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(preview.take(400)))
                 .setSmallIcon(R.drawable.ic_stat_pi)
                 .setAutoCancel(true)
-                .setContentIntent(openAppIntent(context, sessionId))
+                .setContentIntent(openAppIntent(context, sessionId, cwd))
                 .build()
 
             runCatching {
@@ -145,10 +145,11 @@ class AgentForegroundService : Service() {
             // unaffected, so a missing permission must not crash anything.
         }
 
-        private fun openAppIntent(context: Context, sessionId: String?): PendingIntent {
+        private fun openAppIntent(context: Context, sessionId: String?, cwd: String?): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 sessionId?.let { putExtra(MainActivity.EXTRA_OPEN_SESSION, it) }
+                cwd?.let { putExtra(MainActivity.EXTRA_OPEN_SESSION_CWD, it) }
             }
             return PendingIntent.getActivity(
                 context,

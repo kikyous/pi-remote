@@ -51,7 +51,7 @@ interface PlatformServices {
     val strings: PlatformStrings
     fun startForeground(runningCount: Int)
     fun stopForeground()
-    fun notifyFinished(sessionId: String, title: String, preview: String)
+    fun notifyFinished(sessionId: String, cwd: String?, title: String, preview: String)
 }
 
 expect fun createPlatformServices(): PlatformServices

@@ -4,6 +4,7 @@ import com.piremote.net.EventSocket
 import com.piremote.net.ModelDto
 import com.piremote.net.PiRemoteClient
 import com.piremote.net.ProjectDto
+import com.piremote.net.Push
 import com.piremote.net.SessionSummaryDto
 import com.piremote.net.WorkspaceDto
 import com.piremote.net.SocketStatus
@@ -22,8 +23,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** A run that just completed, for the completion notification. */
-data class FinishedRun(val sessionId: String, val title: String, val preview: String)
+/**
+ * A run that just completed, for the completion notification.
+ * [cwd] is the session's project dir, so the notification can deep link
+ * straight to the session without the app hunting for it.
+ */
+data class FinishedRun(val sessionId: String, val cwd: String?, val title: String, val preview: String)
 
 data class BrowseState(
     val projects: List<ProjectDto> = emptyList(),
@@ -81,6 +86,13 @@ class AppRepository(
     /** Insertion-ordered so the oldest entry is the first to evict. */
     private val stores = LinkedHashMap<String, SessionStore>()
 
+    /**
+     * sessionId → project dir, learned from each session's `hello`.
+     * Lets the completion notification carry the cwd instead of a
+     * cross-project search when its deep link is tapped.
+     */
+    private val sessionCwds = HashMap<String, String>()
+
     val socket = EventSocket(client, scope)
     val socketStatus: StateFlow<SocketStatus> get() = socket.status
 
@@ -99,6 +111,7 @@ class AppRepository(
         scope.launch {
             socket.pushes.collect { push ->
                 val id = push.sessionId ?: return@collect
+                if (push is Push.Hello) sessionCwds[id] = push.detail.cwd
                 trackRunState(id, push)
                 existingStore(id)?.apply(push)
             }
@@ -138,6 +151,7 @@ class AppRepository(
         val strings = platform.strings
         val finished = FinishedRun(
             sessionId = sessionId,
+            cwd = sessionCwds[sessionId],
             title = store?.state?.value?.detail?.name
                 ?: store?.state?.value?.detail?.firstMessage?.take(40)
                 ?: strings.session,
@@ -148,6 +162,7 @@ class AppRepository(
         // is usually backgrounded by now.
         platform.notifyFinished(
             finished.sessionId,
+            finished.cwd,
             strings.sessionFinished(finished.title),
             finished.preview,
         )

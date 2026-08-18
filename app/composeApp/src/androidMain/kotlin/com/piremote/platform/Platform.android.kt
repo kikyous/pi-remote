@@ -124,8 +124,8 @@ private object AndroidServices : PlatformServices {
 
     override fun stopForeground() = AgentForegroundService.stop(AndroidApp.context)
 
-    override fun notifyFinished(sessionId: String, title: String, preview: String) =
-        AgentForegroundService.notifyFinished(AndroidApp.context, sessionId, title, preview)
+    override fun notifyFinished(sessionId: String, cwd: String?, title: String, preview: String) =
+        AgentForegroundService.notifyFinished(AndroidApp.context, sessionId, cwd, title, preview)
 }
 
 actual fun createPlatformServices(): PlatformServices = AndroidServices

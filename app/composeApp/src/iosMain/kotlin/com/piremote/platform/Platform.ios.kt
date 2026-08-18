@@ -94,7 +94,7 @@ actual fun createPlatformServices(): PlatformServices = object : PlatformService
     override fun startForeground(runningCount: Int) = Unit
     override fun stopForeground() = Unit
     // TODO(v2): local notification when a run finishes while backgrounded.
-    override fun notifyFinished(sessionId: String, title: String, preview: String) = Unit
+    override fun notifyFinished(sessionId: String, cwd: String?, title: String, preview: String) = Unit
 }
 
 /* ---------------- mutual exclusion ---------------- */
