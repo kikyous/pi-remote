@@ -28,7 +28,6 @@
 <string name="qr_camera_failed">Could not open camera: %1$s</string>
 <string name="qr_hint">Point at the QR code printed by the PC console at startup</string>
 <string name="qr_detail">The server prints the URL, token and QR code at startup</string>
-<string name="back">Back</string>
 <string name="qr_autoconnect">Connects automatically once a QR code is scanned</string>
 <string name="qr_flashlight">Flashlight</string>
 <string name="app_name">Pi Remote</string>

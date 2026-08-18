@@ -28,7 +28,6 @@
 <string name="qr_camera_failed">无法打开相机：%1$s</string>
 <string name="qr_hint">对准 PC 控制台启动时打印的二维码</string>
 <string name="qr_detail">服务端启动后会打印 URL、Token 和二维码</string>
-<string name="back">返回</string>
 <string name="qr_autoconnect">扫描到二维码后自动连接</string>
 <string name="qr_flashlight">手电筒</string>
 <string name="app_name">Pi Remote</string>

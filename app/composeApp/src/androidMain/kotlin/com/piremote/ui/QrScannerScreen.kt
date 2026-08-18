@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import piremote.composeapp.generated.resources.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -211,7 +212,7 @@ fun QrScannerScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onDismiss) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = org.jetbrains.compose.resources.stringResource(Res.string.back), tint = Color.White)
             }
             Text(stringResource(R.string.qr_autoconnect), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
             IconButton(onClick = { flashlightOn = !flashlightOn }) {
