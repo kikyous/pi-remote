@@ -10,10 +10,10 @@ import com.piremote.net.SessionStatusDto
 import com.piremote.net.TextDto
 import com.piremote.net.TextPatchDto
 import com.piremote.net.UsageDto
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 /**
  * The reducer is the whole client-side protocol, so this is where "does the app end
@@ -63,7 +63,7 @@ class ChatStateTest {
     }
 
     @Test
-    fun `add is an upsert, which is how a reconnect is caught up`() {
+    fun `add is an upsert - which is how a reconnect is caught up`() {
         // The server resends each item that changed while we were away, in full,
         // rather than replaying the pushes we missed.
         val partial = Item.Assistant(id = "live-1", at = "t", text = TextDto("half a sen"), pending = true)
@@ -71,7 +71,7 @@ class ChatStateTest {
 
         val state = fold(add(partial), add(whole))
 
-        assertEquals("one item, not two", 1, state.items.size)
+        assertEquals(1, state.items.size, "one item, not two")
         assertEquals("half a sentence, then the rest", state.assistantAt(0).text.s)
         assertEquals(false, state.assistantAt(0).pending)
     }
@@ -91,7 +91,7 @@ class ChatStateTest {
     }
 
     @Test
-    fun `a patch for an item we do not have is dropped, not fatal`() {
+    fun `a patch for an item we do not have is dropped - not fatal`() {
         val before = fold(Push.Hello(sessionId = "s1", seq = 1, items = emptyList(), detail = detail))
         val after = before.reduce(append("live-9", "text", "orphan"))
 
@@ -99,7 +99,7 @@ class ChatStateTest {
     }
 
     @Test
-    fun `hello replaces everything, including a stale pending message`() {
+    fun `hello replaces everything - including a stale pending message`() {
         val state = fold(
             add(assistant("live-1")),
             append("live-1", "text", "half a sen"),
@@ -139,7 +139,7 @@ class ChatStateTest {
     }
 
     @Test
-    fun `a text patch carrying s replaces, which is the drift escape hatch`() {
+    fun `a text patch carrying s replaces - which is the drift escape hatch`() {
         val state = fold(
             add(assistant("live-1")),
             append("live-1", "text", "what we streamed"),
@@ -165,7 +165,7 @@ class ChatStateTest {
     }
 
     @Test
-    fun `a null field in a patch means unchanged, never cleared`() {
+    fun `a null field in a patch means unchanged - never cleared`() {
         val state = fold(
             add(Item.Tool(id = "t1", at = "t", name = "read", title = "/a.txt", isError = true, running = true)),
             // Only `running` is being set; everything else must survive.
@@ -204,7 +204,7 @@ class ChatStateTest {
             ),
         )
 
-        assertEquals("still three items", 3, live.items.size)
+        assertEquals(3, live.items.size, "still three items")
         assertEquals(3, caughtUp.items.size)
         assertEquals("thinking out loud, done", caughtUp.assistantAt(1).text.s)
         assertEquals("partial then all", caughtUp.toolAt(2).output.s)
@@ -229,7 +229,7 @@ class ChatStateTest {
         val once = stream.fold(ChatState()) { s, p -> s.reduce(p) }
         for (from in stream.indices) {
             val replayed = stream.drop(from).fold(once) { s, p -> s.reduce(p) }
-            assertEquals("replaying from $from", once, replayed)
+            assertEquals(once, replayed, "replaying from $from")
         }
     }
 
@@ -245,7 +245,7 @@ class ChatStateTest {
     }
 
     @Test
-    fun `the list is capped, oldest first`() {
+    fun `the list is capped - oldest first`() {
         val state = (1..MAX_ITEMS + 10).fold(ChatState()) { s, i ->
             s.reduce(add(Item.User(id = "e$i", at = "t", text = TextDto("m$i"))))
         }
@@ -275,9 +275,9 @@ class ChatStateTest {
         val after = full.reduce(add(Item.User(id = "new", at = "t", text = TextDto("newest"))))
 
         assertEquals(MAX_ITEMS, after.items.size)
-        assertEquals("e1 was dropped", "e2", after.items.first().id)
-        assertEquals("the cursor follows the window", "e2", after.oldest)
-        assertTrue("there is history before the window again", after.hasMore)
+        assertEquals("e2", after.items.first().id, "e1 was dropped")
+        assertEquals("e2", after.oldest, "the cursor follows the window")
+        assertTrue(after.hasMore, "there is history before the window again")
     }
 
     @Test

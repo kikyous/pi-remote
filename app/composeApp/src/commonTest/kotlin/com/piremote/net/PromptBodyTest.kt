@@ -1,9 +1,9 @@
 package com.piremote.net
 
 import kotlinx.serialization.json.Json
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class PromptBodyTest {
 
@@ -24,7 +24,7 @@ class PromptBodyTest {
                 '\n' -> append("\\n")
                 '\r' -> append("\\r")
                 '\t' -> append("\\t")
-                else -> if (ch < ' ') append("\\u%04x".format(ch.code)) else append(ch)
+                else -> if (ch < ' ') append("\\u" + ch.code.toString(16).padStart(4, '0')) else append(ch)
             }
         }
         append('"')
