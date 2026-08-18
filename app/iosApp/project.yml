@@ -6,7 +6,12 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    DEVELOPMENT_TEAM: 45RMTN4VYV
+    # The cert label reads "Apple Development: kikyous@163.com (45RMTN4VYV)"
+    # but that team id is misleading — the cert's real team (OU) is
+    # 8QV6UFZ79P (see ios-build.md). Kept as the signing team here so
+    # regenerating the project does not silently revert the hand-corrected
+    # pbxproj.
+    DEVELOPMENT_TEAM: 8QV6UFZ79P
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.9"
     # Xcode's SwiftUI preview links a __preview.dylib that fails on Intel Macs;
@@ -16,6 +21,7 @@ targets:
   iosApp:
     type: application
     platform: iOS
+    productName: PiRemoteCMP
     sources:
       - iosApp
     info:
@@ -66,9 +72,24 @@ targets:
       - name: Compile Kotlin framework
         script: |
           cd "$SRCROOT/.."
-          # Xcode's script environment has no Java on PATH; the Kotlin gradle
-          # build needs a JDK (this machine: JDK 17 under ~/tools).
-          export JAVA_HOME="/Users/chen/tools/jdk-17.0.20+8/Contents/Home"
+          # Xcode script phases run without a login shell: java is not on PATH
+          # and JAVA_HOME is unset. Resolve a JDK in order of preference:
+          #   1. $JAVA_HOME if it points at a real JDK
+          #   2. java on PATH (via /usr/libexec/java_home on macOS)
+          #   3. $PIREMOTE_JAVA_HOME (explicit per-machine override)
+          #   4. $HOME/tools/jdk-17.0.20+8/Contents/Home (this machine's JDK)
+          if [ -z "${JAVA_HOME:-}" ] || [ ! -x "$JAVA_HOME/bin/java" ]; then
+            if command -v java >/dev/null 2>&1 && J="$(/usr/libexec/java_home 2>/dev/null)" && [ -x "$J/bin/java" ]; then
+              export JAVA_HOME="$J"
+            elif [ -n "${PIREMOTE_JAVA_HOME:-}" ] && [ -x "$PIREMOTE_JAVA_HOME/bin/java" ]; then
+              export JAVA_HOME="$PIREMOTE_JAVA_HOME"
+            elif [ -x "$HOME/tools/jdk-17.0.20+8/Contents/Home/bin/java" ]; then
+              export JAVA_HOME="$HOME/tools/jdk-17.0.20+8/Contents/Home"
+            else
+              echo "error: no JDK found; set JAVA_HOME (or PIREMOTE_JAVA_HOME) to a JDK 17+" >&2
+              exit 1
+            fi
+          fi
           export PATH="$JAVA_HOME/bin:$PATH"
           ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
         basedOnDependencyAnalysis: false

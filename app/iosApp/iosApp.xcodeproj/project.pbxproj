@@ -14,7 +14,7 @@
 
 /* Begin PBXFileReference section */
 		668CECA83ACC03A83C85A623 /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
-		86038AE1032E284E79B32AD6 /* PiRemoteCMP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PiRemoteCMP.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BC15F1A8F554FDD21EDBFF42 /* PiRemoteCMP.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PiRemoteCMP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C117AD187833E2513BD2F553 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CE8509E5A49E4A5CAAEB3ADB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F543015C899423D4B01CEB2E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -43,7 +43,7 @@
 		94C98B8B3A2BFC1966447269 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				86038AE1032E284E79B32AD6 /* PiRemoteCMP.app */,
+				BC15F1A8F554FDD21EDBFF42 /* PiRemoteCMP.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -67,7 +67,7 @@
 			packageProductDependencies = (
 			);
 			productName = iosApp;
-			productReference = 86038AE1032E284E79B32AD6 /* PiRemoteCMP.app */;
+			productReference = BC15F1A8F554FDD21EDBFF42 /* PiRemoteCMP.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -80,6 +80,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					78B53CC79860CBFC2F5543C6 = {
+						DevelopmentTeam = 8QV6UFZ79P;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -132,7 +133,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "cd \"$SRCROOT/..\"\n# Xcode's script environment has no Java on PATH; the Kotlin gradle\n# build needs a JDK (this machine: JDK 17 under ~/tools).\nexport JAVA_HOME=\"/Users/chen/tools/jdk-17.0.20+8/Contents/Home\"\nexport PATH=\"$JAVA_HOME/bin:$PATH\"\n./gradlew :composeApp:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "cd \"$SRCROOT/..\"\n# Xcode script phases run without a login shell: java is not on PATH\n# and JAVA_HOME is unset. Resolve a JDK in order of preference:\n#   1. $JAVA_HOME if it points at a real JDK\n#   2. java on PATH (via /usr/libexec/java_home on macOS)\n#   3. $PIREMOTE_JAVA_HOME (explicit per-machine override)\n#   4. $HOME/tools/jdk-17.0.20+8/Contents/Home (this machine's JDK)\nif [ -z \"${JAVA_HOME:-}\" ] || [ ! -x \"$JAVA_HOME/bin/java\" ]; then\n  if command -v java >/dev/null 2>&1 && J=\"$(/usr/libexec/java_home 2>/dev/null)\" && [ -x \"$J/bin/java\" ]; then\n    export JAVA_HOME=\"$J\"\n  elif [ -n \"${PIREMOTE_JAVA_HOME:-}\" ] && [ -x \"$PIREMOTE_JAVA_HOME/bin/java\" ]; then\n    export JAVA_HOME=\"$PIREMOTE_JAVA_HOME\"\n  elif [ -x \"$HOME/tools/jdk-17.0.20+8/Contents/Home/bin/java\" ]; then\n    export JAVA_HOME=\"$HOME/tools/jdk-17.0.20+8/Contents/Home\"\n  else\n    echo \"error: no JDK found; set JAVA_HOME (or PIREMOTE_JAVA_HOME) to a JDK 17+\" >&2\n    exit 1\n  fi\nfi\nexport PATH=\"$JAVA_HOME/bin:$PATH\"\n./gradlew :composeApp:embedAndSignAppleFrameworkForXcode\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -185,7 +186,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 45RMTN4VYV;
+				DEVELOPMENT_TEAM = 8QV6UFZ79P;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_PREVIEWS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -244,7 +245,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 45RMTN4VYV;
+				DEVELOPMENT_TEAM = 8QV6UFZ79P;
 				ENABLE_PREVIEWS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -279,22 +280,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 8QV6UFZ79P;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
-				);
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				INFOPLIST_FILE = iosApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-framework",
-					PiRemote,
-				);
+				OTHER_LDFLAGS = "$(inherited) -framework PiRemote";
 				PRODUCT_BUNDLE_IDENTIFIER = com.piremote.cmp.ios;
 				PRODUCT_NAME = PiRemoteCMP;
 				SDKROOT = iphoneos;
@@ -307,22 +300,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 8QV6UFZ79P;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
-				);
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				INFOPLIST_FILE = iosApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-framework",
-					PiRemote,
-				);
+				OTHER_LDFLAGS = "$(inherited) -framework PiRemote";
 				PRODUCT_BUNDLE_IDENTIFIER = com.piremote.cmp.ios;
 				PRODUCT_NAME = PiRemoteCMP;
 				SDKROOT = iphoneos;

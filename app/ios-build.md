@@ -50,9 +50,17 @@ xcodebuild -project iosApp.xcodeproj -target iosApp -configuration Debug \
 ```
 
 The Xcode project's pre-build script phase runs
-`:composeApp:embedAndSignAppleFrameworkForXcode` (Kotlin framework). The script
-exports `JAVA_HOME=/Users/chen/tools/jdk-17.0.20+8/Contents/Home` because
-Xcode's script environment has no Java.
+`:composeApp:embedAndSignAppleFrameworkForXcode` (Kotlin framework). Xcode
+script phases have no login shell, so the script resolves a JDK itself, in
+order of preference:
+
+1. `$JAVA_HOME` if it points at a real JDK
+2. `java` on `PATH` (via `/usr/libexec/java_home` on macOS)
+3. `$PIREMOTE_JAVA_HOME` (explicit per-machine override)
+4. `$HOME/tools/jdk-17.0.20+8/Contents/Home` (this machine's JDK, last resort)
+
+No machine-specific path is hardcoded in `project.yml` / `project.pbxproj`, so
+other machines or CI only need `JAVA_HOME` (or a JDK on `PATH`).
 
 ## Install to the iPhone (fully command line)
 
@@ -98,6 +106,8 @@ devicectl device process launch --device "$DEV" com.piremote.cmp.ios
 - Certificate: `Apple Development: kikyous@163.com (45RMTN4VYV)` — the label's
   team is **misleading**; the cert's real team (OU) is **`8QV6UFZ79P`**
   (`security find-certificate -c "Apple Development" -p | openssl x509 -subject`).
+  `project.yml` sets `DEVELOPMENT_TEAM: 8QV6UFZ79P` (the real team) so that
+  `xcodegen` regenerations keep it; do not "fix" it to the label's value.
 - Provisioning profile: `iOS Team Provisioning Profile: com.piremote.cmp.ios`
   (Xcode-managed, UUID `1c7ff226-dfbe-44ec-b375-626c83ae05ac`, expires 7 days
   after creation — **re-generate weekly** via GUI Signing & Capabilities, then
