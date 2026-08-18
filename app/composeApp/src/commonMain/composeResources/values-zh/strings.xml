@@ -21,7 +21,6 @@
     <string name="collapse">收起</string>
     <string name="selected">已选</string>
     <string name="image">图片</string>
-    <string name="session">会话</string>
 
     <!-- Chat -->
     <string name="chat_hint">发消息给 pi…</string>

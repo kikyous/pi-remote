@@ -21,7 +21,6 @@
     <string name="collapse">Collapse</string>
     <string name="selected">Selected</string>
     <string name="image">Image</string>
-    <string name="session">Session</string>
 
     <!-- Chat -->
     <string name="chat_hint">Message pi…</string>
