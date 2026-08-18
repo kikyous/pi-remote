@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Pi Remote</string>
 
     <!-- Common -->
     <string name="back">返回</string>
@@ -103,19 +102,8 @@
     <!-- Connect / QR -->
     <string name="conn_title">连接到 PC</string>
     <string name="conn_subtitle">在 PC 上运行 pi-remote-server，它会打印地址和 token。\n用下面的扫码连接，对着屏幕上的二维码扫一下即可。</string>
-    <string name="conn_scan">  扫码连接</string>
     <string name="conn_address">地址</string>
     <string name="conn_manual">手动连接</string>
-    <string name="conn_connected">已连接 · 服务端 %1$s</string>
-    <string name="conn_protocol_mismatch">服务端 %1$s 的协议版本是 %2$d，本应用是 %3$d。请升级较旧的一端。</string>
-    <string name="conn_failed">连接失败：%1$s</string>
-    <string name="conn_qr_invalid">不是 Pi Remote 连接二维码（请扫 PC 控制台启动时打印的码）</string>
-    <string name="conn_camera_required">需要相机权限才能扫码</string>
-    <string name="qr_hint">对准 PC 控制台启动时打印的二维码</string>
-    <string name="qr_detail">服务端启动后会打印 URL、Token 和二维码</string>
-    <string name="qr_autoconnect">扫描到二维码后自动连接</string>
-    <string name="qr_flashlight">手电筒</string>
-    <string name="qr_camera_failed">无法打开相机：%1$s</string>
 
     <!-- Git -->
     <string name="git_status_failed">获取 git 状态失败</string>
@@ -131,27 +119,8 @@
     <string name="notice_session_named">会话命名为「%1$s」</string>
 
     <!-- Data-layer errors -->
-    <string name="err_set_title">设置标题失败</string>
-    <string name="err_generate_title">生成标题失败</string>
-    <string name="err_compact">压缩上下文失败</string>
     <string name="err_load_stats">读取会话信息失败</string>
-    <string name="err_abort">中止失败</string>
-    <string name="err_unknown">未知错误</string>
-    <string name="err_unreachable">无法访问</string>
     <string name="not_loaded">未加载</string>
-    <string name="err_load_projects">加载项目失败</string>
-    <string name="err_load_sessions">加载会话失败</string>
-    <string name="err_create_session">新建会话失败</string>
-    <string name="err_create_workspace">新建工作区失败</string>
-    <string name="err_delete">删除失败</string>
-    <string name="session_finished">%1$s 已完成</string>
 
     <!-- Foreground service -->
-    <string name="fg_running_count">%1$d 个会话正在运行</string>
-    <string name="fg_running">会话正在运行</string>
-    <string name="fg_keep_connection">保持与 PC 的连接</string>
-    <string name="fg_running_notif_title">运行中</string>
-    <string name="fg_running_notif_text">会话运行期间保持连接</string>
-    <string name="fg_done_channel">完成提醒</string>
-    <string name="fg_done_channel_desc">会话跑完时通知</string>
 </resources>

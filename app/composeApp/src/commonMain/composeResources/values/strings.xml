@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Pi Remote</string>
 
     <!-- Common -->
     <string name="back">Back</string>
@@ -103,19 +102,8 @@
     <!-- Connect / QR -->
     <string name="conn_title">Connect to PC</string>
     <string name="conn_subtitle">Run pi-remote-server on your PC — it prints the address and token.\nUse the scanner below and point it at the QR code on screen.</string>
-    <string name="conn_scan">   Scan to connect</string>
     <string name="conn_address">Address</string>
     <string name="conn_manual">Manual connect</string>
-    <string name="conn_connected">Connected · server %1$s</string>
-    <string name="conn_protocol_mismatch">Bridge %1$s speaks protocol %2$d, this app speaks %3$d. Upgrade whichever is older.</string>
-    <string name="conn_failed">Connection failed: %1$s</string>
-    <string name="conn_qr_invalid">Not a Pi Remote QR code (scan the one printed by the PC console at startup)</string>
-    <string name="conn_camera_required">Camera permission is required to scan</string>
-    <string name="qr_hint">Point at the QR code printed by the PC console at startup</string>
-    <string name="qr_detail">The server prints the URL, token and QR code at startup</string>
-    <string name="qr_autoconnect">Connects automatically once a QR code is scanned</string>
-    <string name="qr_flashlight">Flashlight</string>
-    <string name="qr_camera_failed">Could not open camera: %1$s</string>
 
     <!-- Git -->
     <string name="git_status_failed">Failed to get git status</string>
@@ -131,27 +119,8 @@
     <string name="notice_session_named">Session named “%1$s”</string>
 
     <!-- Data-layer errors -->
-    <string name="err_set_title">Failed to set title</string>
-    <string name="err_generate_title">Failed to generate title</string>
-    <string name="err_compact">Failed to compact context</string>
     <string name="err_load_stats">Failed to load session info</string>
-    <string name="err_abort">Failed to abort</string>
-    <string name="err_unknown">Unknown error</string>
-    <string name="err_unreachable">unreachable</string>
     <string name="not_loaded">not loaded</string>
-    <string name="err_load_projects">Failed to load projects</string>
-    <string name="err_load_sessions">Failed to load sessions</string>
-    <string name="err_create_session">Failed to create session</string>
-    <string name="err_create_workspace">Failed to create workspace</string>
-    <string name="err_delete">Failed to delete</string>
-    <string name="session_finished">%1$s finished</string>
 
     <!-- Foreground service -->
-    <string name="fg_running_count">%1$d sessions running</string>
-    <string name="fg_running">Session running</string>
-    <string name="fg_keep_connection">Keeping the connection to your PC alive</string>
-    <string name="fg_running_notif_title">Running</string>
-    <string name="fg_running_notif_text">Keeping the connection while the session runs</string>
-    <string name="fg_done_channel">Finish notifications</string>
-    <string name="fg_done_channel_desc">Notify when a session finishes</string>
 </resources>

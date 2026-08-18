@@ -10,3 +10,7 @@ app/keystore/
 *.iml
 captures/
 .cxx/
+
+# macOS / Xcode user state
+.DS_Store
+xcuserdata/
