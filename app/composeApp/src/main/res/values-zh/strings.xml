@@ -31,5 +31,5 @@
 <string name="back">返回</string>
 <string name="qr_autoconnect">扫描到二维码后自动连接</string>
 <string name="qr_flashlight">手电筒</string>
-<string name="app_name">Pi Remote CMP</string>
+<string name="app_name">Pi Remote</string>
 </resources>

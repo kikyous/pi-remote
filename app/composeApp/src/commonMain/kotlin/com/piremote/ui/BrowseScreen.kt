@@ -88,7 +88,7 @@ fun ProjectListScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Pi Remote CMP") },
+                title = { Text("Pi Remote") },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(Res.string.ws_settings))

@@ -79,11 +79,11 @@ kotlin {
 }
 
 android {
-    namespace = "com.piremote.cmp"
+    namespace = "com.piremote"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.piremote.cmp"
+        applicationId = "com.piremote"
         minSdk = 26
         targetSdk = 37
         versionCode = 5

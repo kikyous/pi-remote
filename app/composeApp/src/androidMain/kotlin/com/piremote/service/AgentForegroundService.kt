@@ -12,7 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.piremote.MainActivity
-import com.piremote.cmp.R
+import com.piremote.R
 
 /**
  * Keeps the WebSocket alive while an agent is running.
