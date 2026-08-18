@@ -9,7 +9,7 @@ name: Build Android APK
 #
 # Release signing is opt-in via repository secrets. When KEYSTORE_BASE64 is
 # set (plus KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD), the workflow decodes
-# it into android/keystore/release.jks and builds a signed release APK. Without
+# it into app/keystore/release.jks and builds a signed release APK. Without
 # those secrets it falls back to the debug APK so the build never breaks.
 
 on:
@@ -36,7 +36,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests
-        working-directory: android
+        working-directory: app
         run: ./gradlew testDebugUnitTest --no-daemon
 
       # Opt-in release signing: decode the keystore only when the secret is set.
@@ -45,7 +45,7 @@ jobs:
       # ~/.gradle/gradle.properties that the local signing config reads, so the
       # existing piremoteRelease* properties work on CI unchanged.
       - name: Decode release keystore (if configured)
-        working-directory: android
+        working-directory: app
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             mkdir -p keystore
@@ -68,7 +68,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Build APK (release if signed, else debug)
-        working-directory: android
+        working-directory: app
         run: |
           if [ -f keystore/release.jks ]; then
             ./gradlew assembleRelease --no-daemon
@@ -77,15 +77,15 @@ jobs:
           fi
 
       - name: Prepare APK for upload
-        working-directory: android
+        working-directory: app
         run: |
-          mkdir -p app/build/outputs
-          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+          mkdir -p build/outputs
+          if [ -f composeApp/build/outputs/apk/release/composeApp-release.apk ]; then
             # Signed release build succeeded.
-            cp app/build/outputs/apk/release/app-release.apk app/build/outputs/pi-remote.apk
-          elif [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp composeApp/build/outputs/apk/release/composeApp-release.apk build/outputs/pi-remote.apk
+          elif [ -f composeApp/build/outputs/apk/debug/composeApp-debug.apk ]; then
             # Fallback: debug build.
-            cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/pi-remote.apk
+            cp composeApp/build/outputs/apk/debug/composeApp-debug.apk build/outputs/pi-remote.apk
           else
             # e.g. the keystore was decoded but signing config failed — the
             # release output would be app-release-unsigned.apk, not app-release.apk.
@@ -97,7 +97,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pi-remote-apk
-          path: android/app/build/outputs/pi-remote.apk
+          path: app/build/outputs/pi-remote.apk
           if-no-files-found: error
 
   # Attach the APK to the GitHub Release when a version tag is pushed.

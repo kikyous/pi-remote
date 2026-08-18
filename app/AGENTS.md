@@ -1,7 +1,7 @@
-# Pi Remote Android — 开发笔记
+# Pi Remote App — 开发笔记
 
 ```bash
-./gradlew assembleDebug     # 产物 app/build/outputs/apk/debug/
+./gradlew assembleDebug     # 产物 composeApp/build/outputs/apk/debug/
 ./gradlew installDebug      # 装到已连接的设备/模拟器
 ```
 

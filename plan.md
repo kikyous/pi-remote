@@ -86,7 +86,7 @@ pi-remote/
     src/agent-pool.ts      Map<sessionId, LiveAgent>、空闲回收、headless UI ctx
     src/slim.ts            entry 瘦身：截断 + thinking 延迟
     src/protocol.ts        wire 类型
-  android/                 Gradle / Kotlin / Compose
+  app/                     Gradle / Kotlin / Compose
     app/src/main/java/com/piremote/
       net/                 OkHttp + WS 客户端 + 事件解码
       data/                SessionRepository、每会话 SessionStore

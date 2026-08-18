@@ -20,17 +20,17 @@ argument-hint: "[版本号 | major | minor | patch]"
 ## 2. 质量检查
 
 - server:`cd server && npm run typecheck && npm test`
-- android:`cd android && ./gradlew testDebugUnitTest --no-daemon`
+- android:`cd app && ./gradlew testDebugUnitTest --no-daemon`
 
 ## 3. 同步版本号(目标版本不带 `v` 前缀)
 
 - `server/package.json` 的 `version` 字段
-- `android/app/build.gradle.kts` 的 `versionName = "…"`,并把 `versionCode` 加 1
+- `app/composeApp/build.gradle.kts` 的 `versionName = "…"`,并把 `versionCode` 加 1
 - 若 README 或其他文件里有版本引用,一并更新
 
 ## 4. 写提交并提交(核心:提交描述就是 Release 的 changelog)
 
-- 用一条 conventional commit 涵盖所有改动,subject 形如 `feat(server,android): …` 或 `fix(…): …`
+- 用一条 conventional commit 涵盖所有改动,subject 形如 `feat(server,app): …` 或 `fix(…): …`
 - **正文详细描述**:改了哪些模块、为什么改、关键行为变化,可分点列出
 - 正文会原样展示在 GitHub Release 页面,请写得像正式发布说明
 - 执行 `git add -A && git commit` 提交

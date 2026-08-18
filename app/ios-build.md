@@ -38,7 +38,7 @@ export DEVELOPER_DIR=/Applications/Xcode-26.6.0.app/Contents/Developer
 ## Build (unsigned, CI-style check)
 
 ```sh
-cd android/iosApp
+cd app/iosApp
 export DEVELOPER_DIR=/Applications/Xcode-26.6.0.app/Contents/Developer
 
 # after any project.yml change:
@@ -62,7 +62,7 @@ reports "No Account for Team". Instead: build unsigned → embed the
 Xcode-managed profile → `codesign` manually → `devicectl install`.
 
 ```sh
-cd android/iosApp
+cd app/iosApp
 export DEVELOPER_DIR=/Applications/Xcode-26.6.0.app/Contents/Developer
 DEV="BB650719-9074-5DFC-BED2-F75D6A0D7757"          # devicectl list devices
 APP=build/Debug-iphoneos/PiRemoteCMP.app
