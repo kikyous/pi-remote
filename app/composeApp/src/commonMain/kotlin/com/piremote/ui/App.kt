@@ -55,6 +55,7 @@ fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
     val platform: PlatformServices = remember { createPlatformServices() }
     val connectionFlow = remember { MutableStateFlow(Connection.EMPTY) }
     val connection by connectionFlow.collectAsStateWithLifecycle()
+    var recent by remember { mutableStateOf<List<Connection>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -62,6 +63,11 @@ fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
             connectionFlow.value = it
             loaded = true
         }
+    }
+
+    // Historically-reached services for one-tap reconnect on the connect screen.
+    LaunchedEffect(Unit) {
+        settings.recentConnections.collect { recent = it }
     }
 
     // One repository for the whole process (see AppRepository.get): a fresh
@@ -141,7 +147,9 @@ fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
             !connection.isConfigured -> {
                 ConnectScreen(
                     initial = connection,
+                    recent = recent,
                     onSave = { scope.launch { settings.save(it) } },
+                    onRemoveRecent = { scope.launch { settings.removeRecentConnection(it) } },
                     onCancel = null,
                     strings = platform.strings,
                     modifier = Modifier.fillMaxSize(),
@@ -219,10 +227,12 @@ fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
 
         Screen.Settings -> ConnectScreen(
             initial = connection,
+            recent = recent,
             onSave = {
                 scope.launch { settings.save(it) }
                 screen = Screen.Projects
             },
+            onRemoveRecent = { scope.launch { settings.removeRecentConnection(it) } },
             onCancel = { screen = Screen.Projects },
             strings = platform.strings,
             modifier = Modifier.fillMaxSize(),

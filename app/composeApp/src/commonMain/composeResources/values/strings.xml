@@ -103,6 +103,8 @@
     <string name="conn_subtitle">Run pi-remote-server on your PC — it prints the address and token.\nUse the scanner below and point it at the QR code on screen.</string>
     <string name="conn_address">Address</string>
     <string name="conn_manual">Manual connect</string>
+    <string name="conn_recent">Recent</string>
+    <string name="conn_remove">Remove</string>
 
     <!-- Git -->
     <string name="git_status_failed">Failed to get git status</string>

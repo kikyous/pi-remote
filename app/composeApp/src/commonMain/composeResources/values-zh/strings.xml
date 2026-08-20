@@ -103,6 +103,8 @@
     <string name="conn_subtitle">在 PC 上运行 pi-remote-server，它会打印地址和 token。\n用下面的扫码连接，对着屏幕上的二维码扫一下即可。</string>
     <string name="conn_address">地址</string>
     <string name="conn_manual">手动连接</string>
+    <string name="conn_recent">最近连接</string>
+    <string name="conn_remove">移除</string>
 
     <!-- Git -->
     <string name="git_status_failed">获取 git 状态失败</string>

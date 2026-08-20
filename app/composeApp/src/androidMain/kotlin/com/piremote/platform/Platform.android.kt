@@ -45,7 +45,11 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.piremote.R
 import com.piremote.data.Connection
 import com.piremote.data.SettingsStore
+import com.piremote.data.decodeConnections
+import com.piremote.data.encodeConnections
 import com.piremote.data.normalizeUrl
+import com.piremote.data.updateRecentConnections
+import com.piremote.data.withoutConnection
 import com.piremote.net.PromptImage
 import com.piremote.service.AgentForegroundService
 import com.piremote.ui.MAX_ATTACHMENTS
@@ -141,15 +145,31 @@ private val Context.dataStore by preferencesDataStore(name = "pi_remote_settings
 actual fun createSettingsStore(): SettingsStore = object : SettingsStore {
     private val urlKey = stringPreferencesKey("base_url")
     private val tokenKey = stringPreferencesKey("token")
+    private val recentKey = stringPreferencesKey("recent_connections")
 
     override val connection: Flow<Connection> = AndroidApp.context.dataStore.data.map { prefs ->
         Connection(prefs[urlKey].orEmpty(), prefs[tokenKey].orEmpty())
     }
 
+    override val recentConnections: Flow<List<Connection>> = AndroidApp.context.dataStore.data.map { prefs ->
+        decodeConnections(prefs[recentKey].orEmpty())
+    }
+
     override suspend fun save(connection: Connection) {
         AndroidApp.context.dataStore.edit { prefs ->
-            prefs[urlKey] = normalizeUrl(connection.baseUrl)
-            prefs[tokenKey] = connection.token.trim()
+            val normalized = normalizeUrl(connection.baseUrl)
+            val saved = Connection(normalized, connection.token.trim())
+            prefs[urlKey] = normalized
+            prefs[tokenKey] = saved.token
+            val recent = decodeConnections(prefs[recentKey].orEmpty())
+            prefs[recentKey] = encodeConnections(updateRecentConnections(recent, saved))
+        }
+    }
+
+    override suspend fun removeRecentConnection(baseUrl: String) {
+        AndroidApp.context.dataStore.edit { prefs ->
+            val recent = decodeConnections(prefs[recentKey].orEmpty())
+            prefs[recentKey] = encodeConnections(withoutConnection(recent, baseUrl))
         }
     }
 }
