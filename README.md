@@ -2,7 +2,7 @@
 
 > **Drive your local [pi](https://github.com/nicedoc/pi) coding agent from your phone — anywhere on the LAN.**
 
-A native **Android & iOS app (Kotlin Multiplatform + Compose Multiplatform)** that talks to a featherweight **Node.js bridge** on your PC. Browse every session, watch the agent work in real time, and steer it — all from the couch.
+A native **Android & iOS app (Compose Multiplatform)** that talks to a featherweight **Node.js bridge** on your PC. Browse every session, watch the agent work in real time, and steer it — all from the couch.
 
 <p align="center">
   <img src="screenshots/chat.png" alt="Live chat with streaming response, thinking blocks and tool calls" width="220" />
@@ -74,6 +74,9 @@ cd app
 
 Or download from github releases.
 
+### 3 · iOS app (build from source)
+
+Pi Remote ships for **iOS 15+** (arm64 devices). There is **no prebuilt binary / App Store build** yet — you build it yourself with Xcode on a Mac, then load it onto your own phone.
 
 ---
 
