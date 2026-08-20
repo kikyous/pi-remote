@@ -27,7 +27,10 @@ targets:
     info:
       path: iosApp/Info.plist
       properties:
-        CFBundleDisplayName: Pi Remote CMP
+        CFBundleDisplayName: Pi Remote
+        # CFBundleName shows under the icon too; keep it consistent so the
+        # home-screen label is one word pair across platforms.
+        CFBundleName: Pi Remote
         UILaunchScreen: {}
         # Required by Compose Multiplatform's PlistSanityCheck (crashes at
         # startup with an IllegalStateException if missing).
