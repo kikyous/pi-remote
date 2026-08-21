@@ -151,6 +151,9 @@
     <string name="tree_jump_note">在你发出下一条消息之前，这次跳转不会被保存。</string>
     <string name="tree_jump_confirm">从这里继续</string>
     <string name="tree_jumped">已跳到所选位置</string>
+    <string name="tree_prev_branch">上一分叉</string>
+    <string name="tree_next_branch">下一分叉</string>
+    <string name="tree_jump_leaf">跳到当前位置</string>
 
     <!-- Data-layer errors -->
     <string name="err_load_stats">读取会话信息失败</string>

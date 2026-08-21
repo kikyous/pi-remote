@@ -2,6 +2,7 @@
 
 package com.piremote.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,12 +20,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -93,6 +99,8 @@ fun TreeScreen(
     var foldedIds by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var pending by remember { mutableStateOf<TreeNodeDto?>(null) }
     var moving by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    var initialScrolled by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(sessionId) {
         try {
@@ -110,6 +118,16 @@ fun TreeScreen(
     val filter = remember(filterName) { TreeFilter.valueOf(filterName) }
     val rows = remember(nodes, leafId, filter, foldedIds) {
         buildTreeRows(nodes, leafId, filter, foldedIds)
+    }
+
+    LaunchedEffect(rows) {
+        if (!initialScrolled && rows.isNotEmpty()) {
+            val leafIdx = rows.indexOfFirst { it.isLeaf }
+            if (leafIdx >= 0) {
+                listState.scrollToItem(leafIdx)
+                initialScrolled = true
+            }
+        }
     }
 
     Scaffold(
@@ -164,6 +182,7 @@ fun TreeScreen(
 
                 else -> {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(rows, key = { it.node.id }) { row ->
@@ -180,6 +199,16 @@ fun TreeScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
+                    }
+
+                    if (rows.size > 5 || rows.any { it.showConnector || it.isFoldable }) {
+                        FloatingBranchNavigator(
+                            rows = rows,
+                            listState = listState,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 24.dp),
+                        )
                     }
                 }
             }
@@ -539,4 +568,84 @@ private fun MoveDialog(node: TreeNodeDto, onDismiss: () -> Unit, onConfirm: () -
         confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(Res.string.tree_jump_confirm)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) } },
     )
+}
+
+@Composable
+private fun FloatingBranchNavigator(
+    rows: List<TreeRow>,
+    listState: LazyListState,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
+
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = scheme.surfaceContainerHigh.copy(alpha = 0.92f),
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.4f)),
+        modifier = modifier,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+        ) {
+            // Jump to previous branch segment start
+            IconButton(
+                onClick = {
+                    val current = listState.firstVisibleItemIndex
+                    val target = (current - 1 downTo 0).firstOrNull {
+                        rows[it].isFoldable || rows[it].showConnector
+                    } ?: 0
+                    scope.launch { listState.animateScrollToItem(target) }
+                },
+                modifier = Modifier.size(38.dp),
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = stringResource(Res.string.tree_prev_branch),
+                    tint = scheme.onSurface,
+                )
+            }
+
+            // Jump to active leaf position
+            IconButton(
+                onClick = {
+                    val target = rows.indexOfFirst { it.isLeaf }
+                        .takeIf { it >= 0 }
+                        ?: rows.indexOfLast { it.isOnActivePath }.takeIf { it >= 0 }
+                        ?: (rows.size - 1)
+                    if (target in rows.indices) {
+                        scope.launch { listState.animateScrollToItem(target) }
+                    }
+                },
+                modifier = Modifier.size(38.dp),
+            ) {
+                Icon(
+                    Icons.Default.CenterFocusStrong,
+                    contentDescription = stringResource(Res.string.tree_jump_leaf),
+                    tint = scheme.primary,
+                )
+            }
+
+            // Jump to next branch segment start
+            IconButton(
+                onClick = {
+                    val current = listState.firstVisibleItemIndex
+                    val target = (current + 1 until rows.size).firstOrNull {
+                        rows[it].isFoldable || rows[it].showConnector
+                    } ?: (rows.size - 1)
+                    scope.launch { listState.animateScrollToItem(target) }
+                },
+                modifier = Modifier.size(38.dp),
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = stringResource(Res.string.tree_next_branch),
+                    tint = scheme.onSurface,
+                )
+            }
+        }
+    }
 }

@@ -151,6 +151,9 @@
     <string name="tree_jump_note">Not saved until you send the next message.</string>
     <string name="tree_jump_confirm">Continue here</string>
     <string name="tree_jumped">Moved to the selected point</string>
+    <string name="tree_prev_branch">Previous branch</string>
+    <string name="tree_next_branch">Next branch</string>
+    <string name="tree_jump_leaf">Jump to current leaf</string>
 
     <!-- Data-layer errors -->
     <string name="err_load_stats">Failed to load session info</string>
