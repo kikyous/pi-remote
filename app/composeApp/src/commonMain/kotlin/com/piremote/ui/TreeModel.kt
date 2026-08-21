@@ -28,18 +28,20 @@ data class TreeRow(
     val indent: Int,
     /** Whether to draw a connector (`├─` or `└─`) into this node. */
     val showConnector: Boolean,
+    /** Whether this node is the first among its siblings at the current fork. */
+    val isFirst: Boolean = false,
     /** Whether this node is the last among its siblings at the current fork. */
-    val isLast: Boolean,
+    val isLast: Boolean = false,
     /** Vertical guide lines from ancestor branches to draw on the left. */
-    val gutters: List<Gutter>,
+    val gutters: List<Gutter> = emptyList(),
     /** Whether this node is a foldable segment start (root or child of a fork). */
-    val isFoldable: Boolean,
+    val isFoldable: Boolean = false,
     /** Whether this node is currently folded. */
-    val isFolded: Boolean,
+    val isFolded: Boolean = false,
     /** Whether this node lies on the active path from root to current leaf. */
-    val isOnActivePath: Boolean,
+    val isOnActivePath: Boolean = false,
     /** Whether this node is the active leaf of the session. */
-    val isLeaf: Boolean,
+    val isLeaf: Boolean = false,
 )
 
 /**
@@ -198,6 +200,7 @@ fun buildTreeRows(
         val indent: Int,
         val justBranched: Boolean,
         val showConnector: Boolean,
+        val isFirst: Boolean,
         val isLast: Boolean,
         val gutters: List<Gutter>,
         val isVirtualRootChild: Boolean,
@@ -208,6 +211,7 @@ fun buildTreeRows(
 
     // Push visible roots in reverse order
     for (i in visibleRootIds.indices.reversed()) {
+        val isFirst = i == 0
         val isLast = i == visibleRootIds.size - 1
         stack.addLast(
             VisualState(
@@ -215,6 +219,7 @@ fun buildTreeRows(
                 indent = if (multipleRoots) 1 else 0,
                 justBranched = multipleRoots,
                 showConnector = multipleRoots,
+                isFirst = isFirst,
                 isLast = isLast,
                 gutters = emptyList(),
                 isVirtualRootChild = multipleRoots,
@@ -236,6 +241,7 @@ fun buildTreeRows(
                 node = node,
                 indent = displayIndent,
                 showConnector = state.showConnector && !state.isVirtualRootChild,
+                isFirst = state.isFirst,
                 isLast = state.isLast,
                 gutters = state.gutters,
                 isFoldable = isFoldable(node.id),
@@ -262,6 +268,7 @@ fun buildTreeRows(
         }
 
         for (i in children.indices.reversed()) {
+            val childIsFirst = i == 0
             val childIsLast = i == children.size - 1
             stack.addLast(
                 VisualState(
@@ -269,6 +276,7 @@ fun buildTreeRows(
                     indent = childIndent,
                     justBranched = multipleChildren,
                     showConnector = multipleChildren,
+                    isFirst = childIsFirst,
                     isLast = childIsLast,
                     gutters = childGutters,
                     isVirtualRootChild = false,

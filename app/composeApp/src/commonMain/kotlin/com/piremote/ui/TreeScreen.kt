@@ -291,6 +291,7 @@ private fun TreeRowItem(
         TreeRails(
             indent = row.indent,
             showConnector = row.showConnector,
+            isFirst = row.isFirst,
             isLast = row.isLast,
             gutters = row.gutters,
             isFoldable = row.isFoldable,
@@ -424,6 +425,7 @@ private fun TreeRowItem(
 private fun TreeRails(
     indent: Int,
     showConnector: Boolean,
+    isFirst: Boolean,
     isLast: Boolean,
     gutters: List<Gutter>,
     isFoldable: Boolean,
@@ -478,14 +480,16 @@ private fun TreeRails(
             if (showConnector && indent > 0) {
                 val cx = (indent - 1 + 0.5f) * slotPx
 
-                // Top to center
-                drawLine(
-                    color = railColor,
-                    start = Offset(cx, 0f),
-                    end = Offset(cx, centerY),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Square,
-                )
+                // Top to center (only if not the first sibling at this fork)
+                if (!isFirst) {
+                    drawLine(
+                        color = railColor,
+                        start = Offset(cx, 0f),
+                        end = Offset(cx, centerY),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Square,
+                    )
+                }
 
                 // Center to bottom if not last sibling
                 if (!isLast) {

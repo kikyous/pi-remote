@@ -58,8 +58,10 @@ class TreeModelTest {
         assertEquals(1, x1.indent)
         assertEquals(1, y1.indent)
         assertTrue(x1.showConnector)
+        assertTrue(x1.isFirst)
         assertFalse(x1.isLast)
         assertTrue(y1.showConnector)
+        assertFalse(y1.isFirst)
         assertTrue(y1.isLast)
     }
 
