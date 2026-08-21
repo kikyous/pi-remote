@@ -73,7 +73,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import piremote.composeapp.generated.resources.*
 
-private val RAIL_SLOT_WIDTH = 20.dp
+private val RAIL_SLOT_WIDTH = 14.dp
 private val ROW_MIN_HEIGHT = 44.dp
 
 @Composable
@@ -300,7 +300,7 @@ private fun TreeRowItem(
             modifier = Modifier.fillMaxHeight(),
         )
 
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(3.dp))
 
         Row(
             modifier = Modifier
@@ -312,11 +312,11 @@ private fun TreeRowItem(
             if (row.isOnActivePath) {
                 Box(
                     Modifier
-                        .size(6.dp)
+                        .size(5.dp)
                         .clip(CircleShape)
                         .background(scheme.primary),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(4.dp))
             }
 
             // Label if present
@@ -459,7 +459,7 @@ private fun TreeRails(
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val slotPx = slotWidth.toPx()
-            val strokeWidth = 2.dp.toPx()
+            val strokeWidth = 1.5.dp.toPx()
             val centerY = size.height / 2f
 
             // 1. Ancestor vertical rails (gutters)
@@ -518,15 +518,16 @@ private fun TreeRails(
         // matching TUI where ⊟/⊞ replaces the horizontal dash of ├─ / └─.
         if (isFoldable && (indent > 0 || isFolded)) {
             val buttonSlot = if (indent > 0) indent - 1 else 0
-            val foldOffset = (buttonSlot * slotWidth.value + (slotWidth.value - 14f) / 2f).dp
+            val buttonSize = 12.dp
+            val foldOffset = (buttonSlot * slotWidth.value + (slotWidth.value - buttonSize.value) / 2f).dp
             Surface(
-                shape = RoundedCornerShape(3.dp),
+                shape = RoundedCornerShape(2.5.dp),
                 color = scheme.surfaceContainerHighest,
                 border = BorderStroke(1.dp, scheme.outlineVariant),
                 modifier = Modifier
                     .padding(start = foldOffset)
-                    .size(14.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .size(buttonSize)
+                    .clip(RoundedCornerShape(2.5.dp))
                     .clickable(onClick = onToggleFold),
             ) {
                 Icon(
