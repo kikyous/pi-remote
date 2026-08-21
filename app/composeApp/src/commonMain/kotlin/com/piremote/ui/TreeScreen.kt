@@ -417,8 +417,10 @@ private fun TreeRails(
 ) {
     val scheme = MaterialTheme.colorScheme
     val railColor = scheme.outlineVariant.copy(alpha = 0.9f)
-    // Width is strictly indent * slotWidth (each column level is slotWidth wide)
-    val totalWidth = if (indent > 0) {
+
+    // Width is strictly indent * slotWidth.
+    // When a root node (indent == 0) is folded, reserve 1 slot to show the [+] button.
+    val railWidth = if (indent > 0) {
         (indent * slotWidth.value).dp
     } else if (isFoldable && isFolded) {
         slotWidth
@@ -426,13 +428,13 @@ private fun TreeRails(
         0.dp
     }
 
-    if (totalWidth == 0.dp && !isFoldable) {
+    if (railWidth == 0.dp && (!isFoldable || !isFolded)) {
         return
     }
 
     Box(
         modifier = modifier
-            .width(maxOf(totalWidth, if (isFoldable) slotWidth else 0.dp))
+            .width(railWidth)
             .defaultMinSize(minHeight = ROW_MIN_HEIGHT),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -490,9 +492,10 @@ private fun TreeRails(
             }
         }
 
-        // Fold toggle button: sits inside slot (indent - 1) on the connector line,
+        // Fold toggle button:
+        // Sits inside slot (indent - 1) on the connector line (or slot 0 if folded root),
         // matching TUI where ⊟/⊞ replaces the horizontal dash of ├─ / └─.
-        if (isFoldable) {
+        if (isFoldable && (indent > 0 || isFolded)) {
             val buttonSlot = if (indent > 0) indent - 1 else 0
             val foldOffset = (buttonSlot * slotWidth.value + (slotWidth.value - 14f) / 2f).dp
             Surface(
