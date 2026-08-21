@@ -74,7 +74,7 @@ import org.jetbrains.compose.resources.stringResource
 import piremote.composeapp.generated.resources.*
 
 private val RAIL_SLOT_WIDTH = 14.dp
-private val ROW_MIN_HEIGHT = 44.dp
+private val ROW_MIN_HEIGHT = 40.dp
 
 @Composable
 fun TreeScreen(
@@ -277,6 +277,7 @@ private fun TreeRowItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = ROW_MIN_HEIGHT)
             .height(IntrinsicSize.Min)
             .background(backgroundColor)
             .combinedClickable(
@@ -305,7 +306,7 @@ private fun TreeRowItem(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .padding(vertical = 8.dp),
+                .padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Active path marker
@@ -453,8 +454,7 @@ private fun TreeRails(
 
     Box(
         modifier = modifier
-            .width(railWidth)
-            .defaultMinSize(minHeight = ROW_MIN_HEIGHT),
+            .width(railWidth),
         contentAlignment = Alignment.CenterStart,
     ) {
         Canvas(Modifier.fillMaxSize()) {
