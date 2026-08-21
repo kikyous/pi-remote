@@ -4,8 +4,10 @@ package com.piremote.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -97,7 +99,7 @@ fun TreeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var filterName by rememberSaveable { mutableStateOf(TreeFilter.Default.name) }
     var foldedIds by rememberSaveable { mutableStateOf(emptySet<String>()) }
-    var pending by remember { mutableStateOf<TreeNodeDto?>(null) }
+    var pendingRow by remember { mutableStateOf<TreeRow?>(null) }
     var moving by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     var initialScrolled by rememberSaveable { mutableStateOf(false) }
@@ -195,7 +197,7 @@ fun TreeScreen(
                                         foldedIds + row.node.id
                                     }
                                 },
-                                onClick = { pending = row.node },
+                                onClick = { pendingRow = row },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -217,16 +219,26 @@ fun TreeScreen(
         }
     }
 
-    pending?.let { node ->
+    pendingRow?.let { row ->
         MoveDialog(
-            node = node,
-            onDismiss = { pending = null },
+            node = row.node,
+            isFoldable = row.isFoldable,
+            isFolded = row.isFolded,
+            onToggleFold = {
+                foldedIds = if (row.node.id in foldedIds) {
+                    foldedIds - row.node.id
+                } else {
+                    foldedIds + row.node.id
+                }
+            },
+            onDismiss = { pendingRow = null },
             onConfirm = {
-                pending = null
+                val targetId = row.node.id
+                pendingRow = null
                 moving = true
                 scope.launch {
                     try {
-                        onMoved(repo.client.navigateTree(sessionId, node.id).editorText)
+                        onMoved(repo.client.navigateTree(sessionId, targetId).editorText)
                     } catch (e: ApiException) {
                         error = when {
                             e.isBusy -> busy
@@ -244,6 +256,7 @@ fun TreeScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TreeRowItem(
     row: TreeRow,
@@ -266,7 +279,11 @@ private fun TreeRowItem(
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = if (row.isFoldable) onToggleFold else null,
+                onDoubleClick = if (row.isFoldable) onToggleFold else null,
+            )
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -553,7 +570,14 @@ private fun kindLabel(kind: String): String = when (kind) {
 }
 
 @Composable
-private fun MoveDialog(node: TreeNodeDto, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+private fun MoveDialog(
+    node: TreeNodeDto,
+    isFoldable: Boolean = false,
+    isFolded: Boolean = false,
+    onToggleFold: (() -> Unit)? = null,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(Res.string.tree_jump_title)) },
@@ -583,7 +607,22 @@ private fun MoveDialog(node: TreeNodeDto, onDismiss: () -> Unit, onConfirm: () -
             }
         },
         confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(Res.string.tree_jump_confirm)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) } },
+        dismissButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isFoldable && onToggleFold != null) {
+                    TextButton(onClick = {
+                        onToggleFold()
+                        onDismiss()
+                    }) {
+                        Text(
+                            stringResource(if (isFolded) Res.string.tree_unfold_branch else Res.string.tree_fold_branch),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+            }
+        },
     )
 }
 

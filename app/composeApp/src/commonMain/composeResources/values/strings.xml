@@ -154,6 +154,8 @@
     <string name="tree_prev_branch">Previous branch</string>
     <string name="tree_next_branch">Next branch</string>
     <string name="tree_jump_leaf">Jump to current leaf</string>
+    <string name="tree_fold_branch">Fold branch</string>
+    <string name="tree_unfold_branch">Unfold branch</string>
 
     <!-- Data-layer errors -->
     <string name="err_load_stats">Failed to load session info</string>

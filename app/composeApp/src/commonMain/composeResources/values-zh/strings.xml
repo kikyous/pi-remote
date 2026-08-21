@@ -154,6 +154,8 @@
     <string name="tree_prev_branch">上一分叉</string>
     <string name="tree_next_branch">下一分叉</string>
     <string name="tree_jump_leaf">跳到当前位置</string>
+    <string name="tree_fold_branch">折叠此分支</string>
+    <string name="tree_unfold_branch">展开此分支</string>
 
     <!-- Data-layer errors -->
     <string name="err_load_stats">读取会话信息失败</string>
