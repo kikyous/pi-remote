@@ -1,8 +1,8 @@
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 
 import type { SessionPatch } from "../../backend.ts";
 import { acquire, getLoaded, publishAppendedSince, withPromptLock } from "./agent-pool.ts";
+import { getModelRuntime } from "./bootstrap.ts";
 import { HttpError } from "../../http.ts";
 import {
 	type CompactResultDto,
@@ -19,13 +19,6 @@ import { type LiveSessionState, estimateSessionTokens } from "./store.ts";
 
 /** Shown for a model whose session is not loaded, so exact support is unknown. */
 const STANDARD_LEVELS = ["off", "minimal", "low", "medium", "high"];
-
-let runtime: ModelRuntime | undefined;
-
-async function getRuntime(): Promise<ModelRuntime> {
-	runtime ??= await ModelRuntime.create();
-	return runtime;
-}
 
 /**
  * Token usage of the active branch.
@@ -48,7 +41,7 @@ export async function sessionContextUsage(
 	let contextWindow: number | null = null;
 	if (model) {
 		try {
-			const m = (await getRuntime()).getModel(model.provider, model.modelId);
+			const m = (await getModelRuntime()).getModel(model.provider, model.modelId);
 			contextWindow = m?.contextWindow ?? null;
 		} catch {
 			contextWindow = null;
@@ -81,7 +74,7 @@ export async function idleStatus(
 }
 
 export async function listModels(): Promise<ModelsResponseDto> {
-	const rt = await getRuntime();
+	const rt = await getModelRuntime();
 	const available = await rt.getAvailable();
 
 	const models: ModelDto[] = available.map((model) => ({
@@ -461,7 +454,7 @@ export async function updateSession(sessionId: string, patch: SessionPatch): Pro
 		if (patch.provider === undefined || patch.modelId === undefined) {
 			throw new HttpError(400, "provider and modelId must be sent together", "incomplete_model");
 		}
-		const model = (await getRuntime()).getModel(patch.provider, patch.modelId);
+		const model = (await getModelRuntime()).getModel(patch.provider, patch.modelId);
 		if (!model) {
 			throw new HttpError(400, `Unknown model ${patch.provider}/${patch.modelId}`, "unknown_model");
 		}

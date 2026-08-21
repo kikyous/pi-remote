@@ -6,12 +6,12 @@ import {
 	type AgentSession,
 	type AgentSessionEvent,
 	createAgentSession,
-	ModelRuntime,
 	type SessionEntry,
 	SessionManager,
 } from "@earendil-works/pi-coding-agent";
 
 import { HttpError } from "../../http.ts";
+import { getModelRuntime } from "./bootstrap.ts";
 import { createCoalescer } from "../../live/coalesce.ts";
 import { type LiveSession, publish } from "../../live/hub.ts";
 import type { ThinkingLevel } from "../../protocol.ts";
@@ -51,13 +51,7 @@ export interface LiveAgent extends LiveSession {
 const agents = new Map<string, LiveAgent>();
 const starting = new Map<string, Promise<LiveAgent>>();
 
-let modelRuntime: ModelRuntime | undefined;
 let sweeper: NodeJS.Timeout | undefined;
-
-async function getModelRuntime(): Promise<ModelRuntime> {
-	modelRuntime ??= await ModelRuntime.create();
-	return modelRuntime;
-}
 
 export function isRunning(sessionId: string): boolean {
 	return agents.get(sessionId)?.session.isStreaming ?? false;
