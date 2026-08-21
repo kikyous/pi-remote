@@ -154,6 +154,7 @@ test("a loaded agent's tree outranks the file", () => {
 					getBranch: () => fake,
 					getLeafId: () => "live-2",
 					getEntry: (wanted) => fake.find((e) => e.id === wanted),
+					getTree: () => [],
 				}
 			: undefined,
 	);

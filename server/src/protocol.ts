@@ -361,6 +361,66 @@ export interface SessionStatsDto {
 	context: ContextUsageDto;
 }
 
+/* ---------------- session tree + branch navigation ---------------- */
+
+/**
+ * What kind of row a tree node is.
+ *
+ * The overlap with [NoticeKind] is deliberate: `compaction`, `branch`, `model`,
+ * `thinking` and `named` mean the same things they mean in the conversation, so
+ * the client labels both from one table.
+ */
+export type TreeNodeKind =
+	| "user"
+	| "assistant"
+	| "tool"
+	| "toolResult"
+	| "bash"
+	| "compaction"
+	| "branch"
+	| "model"
+	| "thinking"
+	| "named"
+	| "custom";
+
+/**
+ * One entry of the session tree.
+ *
+ * Flat rather than nested so JSON deserialization on mobile is non-recursive
+ * and cannot blow the call stack on long sessions. Parent relationships are
+ * carried by [parentId] so the client can run the TUI's exact tree algorithm.
+ */
+export interface TreeNodeDto {
+	id: string;
+	/** The nearest ancestor that also has a row here; null at a root. */
+	parentId: string | null;
+	kind: TreeNodeKind;
+	/** One line, already cut to a display-sized length. */
+	text: string;
+	at: string;
+	/** A user-set label (Shift+L in pi's own tree view), when the entry has one. */
+	label?: string;
+}
+
+export interface SessionTreeDto {
+	/** Pre-order: a parent always comes before its children. */
+	nodes: TreeNodeDto[];
+	leafId: string | null;
+}
+
+/**
+ * Where the leaf ended up, and what the composer should say.
+ *
+ * [editorText] is set when the target was a user message: pi moves the leaf to
+ * that message's *parent* and hands its text back, so it can be edited and
+ * resent — which is what actually creates the new branch. Navigating to
+ * anything else leaves the composer alone and continues from that point.
+ */
+export interface NavigateResultDto {
+	leafId: string | null;
+	editorText?: string;
+}
+
 /** An image attachment for a prompt, base64-encoded on the wire. */
 export interface PromptImageDto {
 	type: "image";

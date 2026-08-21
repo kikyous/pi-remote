@@ -47,6 +47,29 @@ export interface LiveSession {
 	coalescer: Coalescer;
 	/** Last time anything touched this session; drives idle disposal. */
 	touchedAt: number;
+	/**
+	 * Sequence at which the item list was last rebuilt wholesale.
+	 *
+	 * Catch-up works by resending the items that moved since a cursor, which is
+	 * sound only because the list grows. Branch navigation breaks that: the leaf
+	 * moves backwards and rows *disappear*, which no combination of `add` and
+	 * `patch` can express — and it appends nothing, so [touched] gains no entry a
+	 * catch-up could resend either. Cursors older than this mark are therefore
+	 * answered with a snapshot. See [markRebuilt].
+	 */
+	rebuiltAt: number;
+}
+
+/**
+ * Draw a line: cursors issued before now can only be answered with a snapshot.
+ *
+ * Consuming a sequence number is what makes the line exact. A `hello` reports
+ * the sequence it was taken at, so a client that arrives *after* the rebuild
+ * holds a cursor at or above the mark and still gets ordinary catch-up; every
+ * cursor from before it falls below and resolves to a fresh snapshot.
+ */
+export function markRebuilt(live: LiveSession): void {
+	live.rebuiltAt = ++live.seq;
 }
 
 /** Assign a sequence, note which item moved, fan out. */
@@ -108,9 +131,13 @@ export function catchUpIds(
 	touched: ReadonlyMap<string, number>,
 	currentSeq: number,
 	sinceSeq: number | undefined,
+	rebuiltAt = 0,
 ): Set<string> | undefined {
 	if (sinceSeq === undefined) return undefined;
 	if (sinceSeq > currentSeq) return undefined;
+	// The list was rebuilt after this cursor was issued: there is no incremental
+	// answer, because what changed is which rows exist at all.
+	if (sinceSeq < rebuiltAt) return undefined;
 
 	const stale = new Set<string>();
 	for (const [id, seq] of touched) if (seq > sinceSeq) stale.add(id);
@@ -125,7 +152,7 @@ export function subscribe(
 ): Set<string> | undefined {
 	live.listeners.add(listener);
 	live.touchedAt = Date.now();
-	return catchUpIds(live.touched, live.seq, sinceSeq);
+	return catchUpIds(live.touched, live.seq, sinceSeq, live.rebuiltAt);
 }
 
 export function unsubscribe(live: LiveSession, listener: EventListener): void {

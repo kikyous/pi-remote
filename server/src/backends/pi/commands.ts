@@ -522,7 +522,7 @@ export function loadedSessionState(sessionId: string): LiveSessionState | undefi
 }
 
 /** Reject with [error] if [promise] does not settle within [ms]. */
-function withDeadline<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {
+export function withDeadline<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
 		const timer = setTimeout(() => reject(error), ms);
 		promise.then(

@@ -14,6 +14,15 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // The Aliyun central mirror serves this group's POM but not its Gradle
+        // module metadata, and a KMP library is unusable without it: Gradle takes
+        // the POM as the whole answer, never consults another repository, and then
+        // looks for the jar the POM claims exists instead of the platform artifacts
+        // the metadata points at. Pinning the group to Maven Central is the fix.
+        exclusiveContent {
+            forRepository { mavenCentral() }
+            filter { includeGroup("io.github.vooft") }
+        }
         maven("https://maven.aliyun.com/repository/google")
         google()
         maven("https://maven.aliyun.com/repository/central")

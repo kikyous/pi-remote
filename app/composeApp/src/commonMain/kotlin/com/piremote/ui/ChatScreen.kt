@@ -78,6 +78,7 @@ fun ChatScreen(
     onUnfollow: (String) -> Unit,
     onBack: () -> Unit,
     onOpenGit: () -> Unit,
+    onOpenTree: () -> Unit,
     onNewSession: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -301,6 +302,7 @@ fun ChatScreen(
                     // started, or one pi kicked off on its own.
                     compacting = state.compacting || state.status.compacting,
                     onSessionInfo = { sheet = SessionSheet.Info },
+                    onOpenTree = onOpenTree,
                     onSendImage = { images ->
                         // Picked images land on the attachment preview bar, to be
                         // sent together with the text.

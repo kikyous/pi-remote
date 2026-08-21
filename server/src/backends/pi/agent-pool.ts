@@ -136,6 +136,18 @@ export function setResyncHandler(handler: (sessionId: string) => void): void {
 }
 
 /**
+ * Ask for a fresh snapshot to be pushed to whoever is watching this session.
+ *
+ * [reload] does this by itself; this is for mutations that change *which* entries
+ * are on the active branch without replacing the agent — branch navigation, where
+ * the leaf moves backwards and the item list therefore shrinks. `add`/`patch` can
+ * only express growth, so `hello` is the only honest answer.
+ */
+export function resync(sessionId: string): void {
+	onResync(sessionId);
+}
+
+/**
  * Replace a stale session while keeping its subscribers attached.
  *
  * Tearing the agent down would otherwise drop every WebSocket listener with it,
@@ -183,6 +195,7 @@ function attach(session: AgentSession, sessionId: string, path: string): LiveAge
 		view: translator,
 		coalescer,
 		touchedAt: Date.now(),
+		rebuiltAt: 0,
 		promptChain: Promise.resolve(),
 		...readStat(path),
 	};

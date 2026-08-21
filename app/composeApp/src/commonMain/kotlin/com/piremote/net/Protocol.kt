@@ -385,6 +385,50 @@ data class SessionStatsDto(
     val context: ContextUsageDto = ContextUsageDto(),
 )
 
+/* ---------------- session tree + branch navigation ---------------- */
+
+/**
+ * One entry of the session tree.
+ *
+ * Flat rather than nested so JSON deserialization on mobile is non-recursive
+ * and cannot blow the call stack on long sessions. Parent relationships are
+ * carried by [parentId] so the client can run the TUI's exact tree algorithm.
+ *
+ * [kind] stays a [String] rather than an enum on purpose: the server may learn a
+ * new entry type before this app does, and an unknown value should render as a
+ * plain row, not throw during decoding.
+ */
+@Serializable
+data class TreeNodeDto(
+    val id: String = "",
+    val parentId: String? = null,
+    val kind: String = "",
+    val text: String = "",
+    val at: String = "",
+    val label: String? = null,
+)
+
+/** Response of `GET /sessions/:id/tree`. */
+@Serializable
+data class SessionTreeDto(
+    val nodes: List<TreeNodeDto> = emptyList(),
+    val leafId: String? = null,
+)
+
+/**
+ * Response of `POST /sessions/:id/tree/navigate`.
+ *
+ * [editorText] is set when the target was a user message: the leaf moves to that
+ * message's parent and its text comes back for editing, and resending it is what
+ * creates the new branch. The shortened history arrives on the push stream as a
+ * fresh snapshot, so this call returns no items.
+ */
+@Serializable
+data class NavigateResultDto(
+    val leafId: String? = null,
+    val editorText: String? = null,
+)
+
 @Serializable
 data class NewSessionDto(val id: String)
 

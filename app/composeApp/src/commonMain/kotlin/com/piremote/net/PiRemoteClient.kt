@@ -75,6 +75,26 @@ class PiRemoteClient(
      */
     suspend fun stats(id: String): SessionStatsDto = get("sessions/$id/stats")
 
+    /* ---------------- session tree ---------------- */
+
+    /**
+     * The whole session as a tree: every branch, not just the one being read.
+     *
+     * Read off the session file like [stats], so opening the tree costs no more
+     * than a page of history. Nothing pushes updates for it — it is a snapshot
+     * taken when the screen opens.
+     */
+    suspend fun sessionTree(id: String): SessionTreeDto = get("sessions/$id/tree")
+
+    /**
+     * Move the leaf onto an earlier entry and continue from there — pi's `/tree`.
+     *
+     * The shortened history is not in the answer: moving the leaf backwards makes
+     * the item list shrink, which the push stream reports as a fresh snapshot.
+     */
+    suspend fun navigateTree(id: String, entryId: String): NavigateResultDto =
+        post("sessions/$id/tree/navigate", buildJsonBody("entryId" to entryId))
+
     /* ---------------- git (read-only) ---------------- */
 
     suspend fun gitStatus(cwd: String): GitStatusDto =

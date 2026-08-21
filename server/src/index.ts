@@ -79,6 +79,17 @@ async function main(): Promise<void> {
 		return agent.stats(ctx.params.id!);
 	});
 
+	// The session as a tree — every branch, not just the one being read. Free and
+	// agent-free like the item page, except when an agent happens to be loaded, in
+	// which case its in-memory leaf is the one that counts.
+	router.get(`${API_PREFIX}/sessions/:id/tree`, (ctx) => {
+		const agent = backend();
+		if (!agent.sessionTree) {
+			throw new HttpError(501, "This agent has no session tree", "tree_unsupported");
+		}
+		return agent.sessionTree(ctx.params.id!);
+	});
+
 	router.get(`${API_PREFIX}/models`, () => backend().listModels());
 
 	// Read-only git queries for the repo a session lives in.
@@ -147,6 +158,22 @@ async function main(): Promise<void> {
 			throw new HttpError(501, "This agent cannot compact context", "compact_unsupported");
 		}
 		return agent.compact(ctx.params.id!);
+	});
+
+	// Move the leaf onto an earlier entry and continue from there — pi's `/tree`.
+	// Answers with where the leaf landed, plus the selected user message's text so
+	// the composer can offer it for editing; the shortened history is reported on
+	// the push stream as a fresh snapshot, since the item list shrank.
+	router.post(`${API_PREFIX}/sessions/:id/tree/navigate`, (ctx) => {
+		const agent = backend();
+		if (!agent.navigateTree) {
+			throw new HttpError(501, "This agent cannot navigate the session tree", "navigate_unsupported");
+		}
+		const entryId = asRecord(ctx.body).entryId;
+		if (typeof entryId !== "string" || entryId.length === 0) {
+			throw new HttpError(400, "entryId must be a non-empty string", "bad_entry_id");
+		}
+		return agent.navigateTree(ctx.params.id!, entryId);
 	});
 
 	router.patch(`${API_PREFIX}/sessions/:id`, async (ctx) => {

@@ -3,6 +3,7 @@ import type {
 	CompactResultDto,
 	ItemPageDto,
 	ModelsResponseDto,
+	NavigateResultDto,
 	ProjectDto,
 	PromptImageDto,
 	PromptResultDto,
@@ -10,6 +11,7 @@ import type {
 	SessionStatsDto,
 	SessionStatus,
 	SessionSummaryDto,
+	SessionTreeDto,
 } from "./protocol.ts";
 
 /**
@@ -124,6 +126,20 @@ export interface AgentBackend {
 	 * total to report.
 	 */
 	stats?(sessionId: string): Promise<SessionStatsDto>;
+	/**
+	 * The session as a tree: every branch, not just the active path.
+	 *
+	 * Optional like the two above — an agent whose sessions are a flat list has
+	 * no tree to report — and read-only, so it must not start an agent.
+	 */
+	sessionTree?(sessionId: string): Promise<SessionTreeDto>;
+	/**
+	 * Move the leaf to an earlier entry and continue from there.
+	 *
+	 * Paired with [sessionTree]: an agent that can show a tree but not walk it
+	 * implements only the former, and the route answers 501 for this one.
+	 */
+	navigateTree?(sessionId: string, entryId: string): Promise<NavigateResultDto>;
 
 	/* ── live sessions ─────────────────────────────────────────────────────── */
 

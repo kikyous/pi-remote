@@ -1,6 +1,6 @@
 import { statSync } from "node:fs";
 
-import { type SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
+import { type SessionEntry, SessionManager, type SessionTreeNode } from "@earendil-works/pi-coding-agent";
 
 import { itemsFromEntries } from "./items.ts";
 import type { Item } from "../../protocol.ts";
@@ -21,6 +21,8 @@ export interface EntryTree {
 	getBranch(fromId?: string): SessionEntry[];
 	getLeafId(): string | null;
 	getEntry(id: string): SessionEntry | undefined;
+	/** The whole file as a tree, with labels resolved onto their targets. */
+	getTree(): SessionTreeNode[];
 }
 
 /**
@@ -66,6 +68,13 @@ export interface SessionModel {
 	leafId: string | null;
 	/** Raw (un-shortened) entry by id, for `/full`. */
 	entry(id: string): SessionEntry | undefined;
+	/**
+	 * The tree itself — every branch, nested, labels resolved.
+	 *
+	 * Built on demand and memoized like [all], because `getTree()` deep-copies
+	 * the whole structure and only the tree route asks for it.
+	 */
+	tree(): SessionTreeNode[];
 	/**
 	 * The whole branch as items, built once per file version.
 	 *
@@ -151,12 +160,14 @@ function fromManager(sm: EntryTree): SessionModel {
 	let items: Item[] | undefined;
 	let all: SessionEntry[] | undefined;
 	let branch: SessionEntry[] | undefined;
+	let tree: SessionTreeNode[] | undefined;
 	return {
 		entries,
 		all: () => (all ??= sm.getEntries()),
 		branch: () => (branch ??= sm.getBranch()),
 		leafId: sm.getLeafId(),
 		entry: (id) => sm.getEntry(id),
+		tree: () => (tree ??= sm.getTree()),
 		items: () => (items ??= itemsFromEntries(entries)),
 	};
 }

@@ -119,9 +119,45 @@
     <string name="notice_thinking_level">思考等级：%1$s</string>
     <string name="notice_session_named">会话命名为「%1$s」</string>
 
+    <!-- Session tree -->
+    <string name="tree_title">会话树</string>
+    <string name="tree_open">会话树</string>
+    <string name="tree_raw">原始树</string>
+    <string name="tree_show_tools">含工具调用</string>
+    <string name="tree_filter">过滤: %1$s</string>
+    <string name="tree_filter_default">默认</string>
+    <string name="tree_filter_no_tools">无工具</string>
+    <string name="tree_filter_user_only">仅提问</string>
+    <string name="tree_filter_labeled_only">有标签</string>
+    <string name="tree_filter_all">全部</string>
+    <string name="tree_current">当前位置</string>
+    <string name="tree_after_here">在当前位置之后</string>
+    <string name="tree_other_branch">另一条分支</string>
+    <string name="tree_splits">这里分成 %1$d 条</string>
+    <string name="tree_group_turns">%1$d 轮</string>
+    <string name="tree_turn_size">%1$d 条</string>
+    <string name="tree_kind_user">提问</string>
+    <string name="tree_kind_assistant">回复</string>
+    <string name="tree_kind_tool">工具</string>
+    <string name="tree_kind_bash">命令</string>
+    <string name="tree_kind_model">模型</string>
+    <string name="tree_kind_thinking">思考等级</string>
+    <string name="tree_kind_named">会话命名</string>
+    <string name="tree_empty">这个会话还没有任何内容</string>
+    <string name="tree_load_failed">读取会话树失败</string>
+    <string name="tree_jump_title">从这里继续？</string>
+    <string name="tree_jump_user">对话会回到这条消息之前，消息原文填回输入框 —— 改完发送，就开出一条新分支。</string>
+    <string name="tree_jump_other">对话会回到这一点并从这里继续。什么都不会被删除：你离开的那条分支仍留在会话里。</string>
+    <string name="tree_jump_note">在你发出下一条消息之前，这次跳转不会被保存。</string>
+    <string name="tree_jump_confirm">从这里继续</string>
+    <string name="tree_jumped">已跳到所选位置</string>
+
     <!-- Data-layer errors -->
     <string name="err_load_stats">读取会话信息失败</string>
     <string name="not_loaded">未加载</string>
+    <string name="err_navigate">跳转失败</string>
+    <string name="err_navigate_busy">会话正在运行 —— 先停下它，或等它跑完</string>
+    <string name="err_navigate_unsupported">桥接服务版本过旧，不支持会话树，请先升级</string>
 
     <!-- Foreground service -->
 </resources>

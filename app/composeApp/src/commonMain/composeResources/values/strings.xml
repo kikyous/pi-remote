@@ -119,9 +119,45 @@
     <string name="notice_thinking_level">Thinking level: %1$s</string>
     <string name="notice_session_named">Session named “%1$s”</string>
 
+    <!-- Session tree -->
+    <string name="tree_title">Session tree</string>
+    <string name="tree_open">Session tree</string>
+    <string name="tree_raw">Raw tree</string>
+    <string name="tree_show_tools">With tool calls</string>
+    <string name="tree_filter">Filter: %1$s</string>
+    <string name="tree_filter_default">default</string>
+    <string name="tree_filter_no_tools">no tools</string>
+    <string name="tree_filter_user_only">users</string>
+    <string name="tree_filter_labeled_only">labeled</string>
+    <string name="tree_filter_all">all</string>
+    <string name="tree_current">current</string>
+    <string name="tree_after_here">after where you are</string>
+    <string name="tree_other_branch">another branch</string>
+    <string name="tree_splits">splits %1$d ways</string>
+    <string name="tree_group_turns">%1$d turns</string>
+    <string name="tree_turn_size">%1$d entries</string>
+    <string name="tree_kind_user">prompt</string>
+    <string name="tree_kind_assistant">reply</string>
+    <string name="tree_kind_tool">tool</string>
+    <string name="tree_kind_bash">command</string>
+    <string name="tree_kind_model">model</string>
+    <string name="tree_kind_thinking">thinking level</string>
+    <string name="tree_kind_named">named</string>
+    <string name="tree_empty">This session has nothing in it yet</string>
+    <string name="tree_load_failed">Failed to load the session tree</string>
+    <string name="tree_jump_title">Continue from here?</string>
+    <string name="tree_jump_user">The conversation rewinds to just before this message, and its text goes back into the composer — edit it and send to start a new branch.</string>
+    <string name="tree_jump_other">The conversation rewinds to this point and carries on from here. Nothing is deleted: the branch you leave stays in the session.</string>
+    <string name="tree_jump_note">Not saved until you send the next message.</string>
+    <string name="tree_jump_confirm">Continue here</string>
+    <string name="tree_jumped">Moved to the selected point</string>
+
     <!-- Data-layer errors -->
     <string name="err_load_stats">Failed to load session info</string>
     <string name="not_loaded">not loaded</string>
+    <string name="err_navigate">Failed to move to that point</string>
+    <string name="err_navigate_busy">The agent is running — stop it or wait for it to finish</string>
+    <string name="err_navigate_unsupported">This bridge is too old for the session tree — upgrade it</string>
 
     <!-- Foreground service -->
 </resources>

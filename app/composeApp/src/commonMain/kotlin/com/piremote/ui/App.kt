@@ -42,6 +42,8 @@ private sealed interface Screen {
     data class Chat(val sessionId: String, val project: ProjectDto) : Screen
     /** Git changes/diffs for the repo [cwd]; back returns to [backTo]. */
     data class Git(val cwd: String, val backTo: Screen) : Screen
+    /** The session's entry tree, for jumping between branches; back to [backTo]. */
+    data class Tree(val sessionId: String, val backTo: Screen) : Screen
     data object Settings : Screen
 }
 
@@ -104,6 +106,7 @@ fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
             is Screen.Sessions -> screen = Screen.Projects
             is Screen.Chat -> screen = Screen.Sessions(current.project)
             is Screen.Git -> screen = current.backTo
+            is Screen.Tree -> screen = current.backTo
             Screen.Projects -> Unit // unreachable: handler is disabled here
         }
     }
@@ -207,6 +210,7 @@ fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
                     onUnfollow = repo::stopFollowing,
                     onBack = { screen = Screen.Sessions(current.project) },
                     onOpenGit = { screen = Screen.Git(current.project.cwd, current) },
+                    onOpenTree = { screen = Screen.Tree(current.sessionId, current) },
                     onNewSession = {
                         // Same directory as the current session; back from the
                         // new one lands on the same project list.
@@ -217,6 +221,25 @@ fun PiRemoteApp(deepLink: DeepLink? = null, modifier: Modifier = Modifier) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+
+        is Screen.Tree -> TreeScreen(
+            repo = repo,
+            sessionId = current.sessionId,
+            onBack = { screen = current.backTo },
+            onMoved = { editorText ->
+                // A user message hands its text back to be edited and resent —
+                // that resend is what makes the new branch real. Anything else
+                // leaves the composer alone.
+                if (editorText != null) repo.storeFor(current.sessionId).setDraft(editorText)
+                // Nothing to refresh by hand. Opening this screen unsubscribed the
+                // chat behind us, so the snapshot pushed on the move went to the
+                // other devices — but the move also marked the item list rebuilt,
+                // and the cursor we resubscribe with predates that mark, so the
+                // server answers with a full snapshot of the branch we landed on.
+                screen = current.backTo
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
 
         is Screen.Git -> GitScreen(
             repo = repo,

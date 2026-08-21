@@ -23,6 +23,7 @@ import {
 import { deleteSession, deleteWorkspace } from "./delete.ts";
 import { setLiveSource } from "./model.ts";
 import { sessionStats } from "./stats.ts";
+import { navigateTree, sessionTree } from "./tree.ts";
 import {
 	getDetail,
 	getFullByRef,
@@ -96,6 +97,8 @@ export function createPiBackend(): AgentBackend {
 		},
 		compact: compactSession,
 		stats: sessionStats,
+		sessionTree,
+		navigateTree,
 
 		acquire: (sessionId: string) => acquire(sessionId),
 		getLoaded,

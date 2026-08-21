@@ -108,6 +108,20 @@ pi-remote/
 | POST | `/api/v1/sessions/{id}/prompt` | `{text, streamingBehavior?}` |
 | POST | `/api/v1/sessions/{id}/abort` | 中止 |
 | PATCH | `/api/v1/sessions/{id}` | `{model?, thinkingLevel?, name?}` |
+| GET | `/api/v1/sessions/{id}/tree` | 整棵会话树（含废弃分支）+ 当前 leaf；只读，不起 agent |
+| POST | `/api/v1/sessions/{id}/tree/navigate` | `{entryId}` → 移动 leaf，答 `{leafId, editorText?}` |
+
+**tree 的三条语义**：① 树上每个节点相对当前位置有三种关系，必须分开：在 leaf→root 路径上
+（正在读的历史）、在 leaf **之后**（同一条线、被回退过去了，`ahead`）、从分叉点**岔开**（真的另一条
+路）。把后两者混成"另一条分支"，会把一条直线画成一把扇形分支。② leaf 不持久化 —— 不带摘要的 `navigateTree` 一个字节都不写文件，
+`SessionManager` 加载时 leaf 恒等于文件最后一行，所以跳转只活在 agent 内存里，直到下一条消息
+以新 leaf 为 parent 落盘才固化。这是 pi 自己的行为，不是简化。② 跳转让 leaf 往回走、可见条目
+变少，而 `add`/`patch` 只能表达增量，所以收尾是 `resync()` 推一帧 `hello`（顺带让所有在看同一
+会话的设备一起换分支）。
+
+客户端把 entry 聚合成**轮次**再画轨道图（498 条 entry → 12 个轮次）：活动的那条线独占 0 号轨道，
+所以主干是一条贯穿全屏的直线，岔开的路各占一条轨道挂在它身上；相邻两段必须错开轨道，否则竖线会把
+两段并成一条、谎称它们是同一条路。
 
 WS `/ws?token=`：客户端 `{op:"subscribe", sessionId, sinceEntryId?}`，服务端推
 `{sessionId, seq, event}`。`seq` 单调递增供客户端发现丢包；30s 心跳。
@@ -149,6 +163,9 @@ flush 合批；**Markdown 只对已完成消息渲染**，流式中用纯文本�
 
 图片附件、扩展 UI 对话框转发、文件浏览 / git diff、fork 与 tree 分支导航、手动 compact、
 mDNS 发现、公网访问。
+
+（其中图片附件、git diff、手动 compact、tree 分支导航后来都做了。fork / clone 仍然不做：
+它们会写出新的会话文件，牵扯列表刷新与 fork 保护，是独立一件事。）
 
 多客户端相关：会话软锁 / 控制权争夺、设备身份识别与来源标注、abort 归属提示、模型切换 CAS、
 `fs.watch` 外部变更告警。

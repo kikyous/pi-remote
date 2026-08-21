@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
@@ -121,6 +122,7 @@ fun ChatInput(
     onCompact: () -> Unit,
     compacting: Boolean = false,
     onSessionInfo: () -> Unit,
+    onOpenTree: () -> Unit,
     onSendImage: (List<PromptImage>) -> Unit,
     attachments: List<PromptImage>,
     onRemoveAttachment: (Int) -> Unit,
@@ -406,6 +408,11 @@ fun ChatInput(
                 onGenerateTitle = onGenerateTitle,
                 onCompact = onCompact,
                 onSessionInfo = onSessionInfo,
+                onOpenTree = {
+                    panelOpen = false
+                    setIme(true)
+                    onOpenTree()
+                },
                 onPickImages = { pickImages() },
                 modifier = Modifier.fillMaxWidth().height(with(density) { panelHeight.toDp() }),
             )
@@ -424,6 +431,7 @@ private fun MorePanel(
     onGenerateTitle: () -> Unit,
     onCompact: () -> Unit,
     onSessionInfo: () -> Unit,
+    onOpenTree: () -> Unit,
     onPickImages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -459,6 +467,7 @@ private fun MorePanel(
             ),
         )
         add(Cell(stringResource(Res.string.session_info), Icons.Outlined.Info, onSessionInfo))
+        add(Cell(stringResource(Res.string.tree_open), Icons.Outlined.AccountTree, onOpenTree))
     }
 
     // The grid is centered as a whole; items flow left-to-right inside fixed
