@@ -3,11 +3,8 @@
 package com.piremote.ui
 
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -392,6 +389,9 @@ private fun ThinkingCard(
     ThinkingCardShell(
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         active = active,
+        // Thinking streams as `append` patches, so the text is the pulse key —
+        // the same rhythm as a running tool card.
+        pulseOn = thinking.takeIf { active },
         onClick = {
             open = !open
             if (open && more != null && full == null) onExpand(more.ref)
@@ -443,10 +443,15 @@ private fun ToolRowCard(
         borderColor = borderColor,
         bgColor = if (error) ToolErrBg else ToolOkBg,
         modifier = modifier,
-        // A running tool breathes so it reads as alive without a spinner. It does
-        // not open itself: every card starts collapsed, so the conversation stays
-        // scannable and nothing shifts under the reader when a tool starts.
-        breathing = tool.running,
+        // Breathes once per patch: every patch for this call — output appended,
+        // args or title filled in — arrives as a new [Item.Tool], so the item is
+        // both the "something landed" signal and the pulse key. Dropped once the
+        // call settles, or a finished card would breathe again on every scroll in.
+        //
+        // The card still does not open itself: every one starts collapsed, so the
+        // conversation stays scannable and nothing shifts under the reader when a
+        // tool starts.
+        pulseOn = tool.takeIf { it.running },
     ) {
         val diff = tool.diff
         val args = tool.args
@@ -504,9 +509,17 @@ internal fun ToolDivider(color: Color) {
 }
 
 /**
- * Pulsing 1dp border for running cards. The border alpha breathes up and back
- * (pi-web's pulse rhythm), so a running tool / thinking / compaction reads as
- * alive without a spinner. Settled cards keep a static [Modifier.border].
+ * 1dp border that breathes once each time [key] changes.
+ *
+ * Every live card here has a per-update signal — a patch — and every patch
+ * arrives as a fresh item, so the item itself is the key. The border snaps
+ * bright when one lands and decays back to rest, then stays there: a tool
+ * waiting on a slow command, or a thinking block that has stopped growing, sits
+ * still instead of implying progress it is not making.
+ *
+ * A patch landing mid-breath restarts it — [LaunchedEffect] cancels the running
+ * animation — so a fast stream reads as a border held bright rather than a queue
+ * of breaths played back late.
  *
  * The animated alpha is read inside the draw lambda, never during composition.
  * Reading it as a plain value would restart [CardShell] on every animation
@@ -515,14 +528,12 @@ internal fun ToolDivider(color: Color) {
  * tool streams output.
  */
 @Composable
-private fun Modifier.breathingBorder(base: Color, shape: Shape): Modifier {
-    val transition = rememberInfiniteTransition(label = "card-breathe")
-    val alpha = transition.animateFloat(
-        initialValue = base.alpha,
-        targetValue = (base.alpha + 0.55f).coerceAtMost(1f),
-        animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
-        label = "card-breathe-alpha",
-    )
+private fun Modifier.pulsingBorder(base: Color, shape: Shape, key: Any?): Modifier {
+    val alpha = remember(base) { Animatable(base.alpha) }
+    LaunchedEffect(alpha, key) {
+        alpha.animateTo((base.alpha + 0.55f).coerceAtMost(1f), tween(durationMillis = 140))
+        alpha.animateTo(base.alpha, tween(durationMillis = 560))
+    }
     return drawWithCache {
         // Inset by half the stroke, the way Modifier.border does: centred on
         // the bounds, the outer half would fall outside the clip and the line
@@ -546,8 +557,13 @@ private fun Modifier.breathingBorder(base: Color, shape: Shape): Modifier {
 /**
  * One card container for every assistant-side block — thinking, tool calls,
  * bash, results, transient states and text. Neutral by default; tool calls
- * tint it via [background]/[border]; running states breathe via [breathing].
- * Headers and bodies are just content.
+ * tint it via [background]/[border]. Headers and bodies are just content.
+ *
+ * [pulseOn] is the live-card signal: pass the value that changes with every
+ * patch — the item itself — and the border breathes once per patch. Null means a
+ * settled card, drawn with a static border. Gating it on "still running" is the
+ * caller's job: a [pulseOn] that outlives the work would breathe again every
+ * time the card scrolls back into view.
  */
 @Composable
 internal fun CardShell(
@@ -555,12 +571,12 @@ internal fun CardShell(
     shape: Shape = RoundedCornerShape(8.dp),
     background: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     border: Color? = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-    breathing: Boolean = false,
+    pulseOn: Any? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val borderModifier = when {
         border == null -> Modifier
-        breathing -> Modifier.breathingBorder(border, shape)
+        pulseOn != null -> Modifier.pulsingBorder(border, shape, pulseOn)
         else -> Modifier.border(1.dp, border, shape)
     }
     Column(
@@ -593,7 +609,7 @@ internal fun ToolCallCard(
     bgColor: Color,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
-    breathing: Boolean = false,
+    pulseOn: Any? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
@@ -606,7 +622,7 @@ internal fun ToolCallCard(
         modifier = modifier,
         background = bgColor,
         border = borderColor,
-        breathing = breathing,
+        pulseOn = pulseOn,
     ) {
         Row(
             Modifier
@@ -654,19 +670,21 @@ internal fun ToolCallCard(
  * (no chevron). The streaming turn shows just the shell; the settled card
  * adds an expandable body below the hairline divider.
  *
- * [active] means this turn is still reasoning. It drives both the breathing
- * border and the header wording — a settled card reading "Thinking…" claims
- * work that finished long ago, and languages that mark the progressive form
- * (中文) cannot paper over that with one neutral noun the way English does.
+ * [active] means this turn is still reasoning, and drives the header wording —
+ * a settled card reading "Thinking…" claims work that finished long ago, and
+ * languages that mark the progressive form (中文) cannot paper over that with
+ * one neutral noun the way English does. [pulseOn] breathes the border per
+ * patch; see [CardShell].
  */
 @Composable
 internal fun ThinkingCardShell(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     active: Boolean = false,
+    pulseOn: Any? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-    CardShell(modifier = modifier, breathing = active) {
+    CardShell(modifier = modifier, pulseOn = pulseOn) {
         Row(
             Modifier
                 .fillMaxWidth()
