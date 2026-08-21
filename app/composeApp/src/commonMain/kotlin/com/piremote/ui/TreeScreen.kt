@@ -417,11 +417,22 @@ private fun TreeRails(
 ) {
     val scheme = MaterialTheme.colorScheme
     val railColor = scheme.outlineVariant.copy(alpha = 0.9f)
-    val totalWidth = (indent * slotWidth.value + (if (isFoldable) 22 else 4)).dp
+    // Width is strictly indent * slotWidth (each column level is slotWidth wide)
+    val totalWidth = if (indent > 0) {
+        (indent * slotWidth.value).dp
+    } else if (isFoldable && isFolded) {
+        slotWidth
+    } else {
+        0.dp
+    }
+
+    if (totalWidth == 0.dp && !isFoldable) {
+        return
+    }
 
     Box(
         modifier = modifier
-            .width(totalWidth)
+            .width(maxOf(totalWidth, if (isFoldable) slotWidth else 0.dp))
             .defaultMinSize(minHeight = ROW_MIN_HEIGHT),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -444,7 +455,7 @@ private fun TreeRails(
                 }
             }
 
-            // 2. Incoming connector (├─ or └─)
+            // 2. Incoming connector (├─ or └─) in slot (indent - 1)
             if (showConnector && indent > 0) {
                 val cx = (indent - 1 + 0.5f) * slotPx
 
@@ -479,15 +490,18 @@ private fun TreeRails(
             }
         }
 
-        // Fold toggle button
+        // Fold toggle button: sits inside slot (indent - 1) on the connector line,
+        // matching TUI where ⊟/⊞ replaces the horizontal dash of ├─ / └─.
         if (isFoldable) {
-            val foldOffset = (indent * slotWidth.value).dp
+            val buttonSlot = if (indent > 0) indent - 1 else 0
+            val foldOffset = (buttonSlot * slotWidth.value + (slotWidth.value - 14f) / 2f).dp
             Surface(
                 shape = RoundedCornerShape(3.dp),
-                color = scheme.surfaceVariant,
+                color = scheme.surfaceContainerHighest,
+                border = BorderStroke(1.dp, scheme.outlineVariant),
                 modifier = Modifier
                     .padding(start = foldOffset)
-                    .size(16.dp)
+                    .size(14.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .clickable(onClick = onToggleFold),
             ) {
@@ -495,7 +509,7 @@ private fun TreeRails(
                     imageVector = if (isFolded) Icons.Default.Add else Icons.Default.Remove,
                     contentDescription = if (isFolded) "Expand" else "Collapse",
                     tint = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(1.dp),
+                    modifier = Modifier.padding(0.5.dp),
                 )
             }
         }
