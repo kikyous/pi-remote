@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -72,6 +73,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
@@ -81,6 +84,8 @@ import com.piremote.net.Item
 import com.piremote.net.MoreDto
 import com.piremote.net.TextDto
 import com.piremote.net.ToolDiffDto
+import com.mikepenz.markdown.model.rememberStreamingMarkdownState
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -203,23 +208,12 @@ private fun AssistantBlock(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 if (item.text.s.isNotBlank()) {
-                    // Markdown is parsed once, when the message settles. While it
-                    // streams the text stays plain: re-parsing a growing string a
-                    // dozen times a second is what actually drops frames on a long
-                    // answer, and half-written markdown renders wrong anyway.
-                    if (item.pending) {
-                        Text(
-                            item.text.s,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    } else {
-                        Markdown(
-                            item.text.s,
-                            typography = LocalMarkdownTypography.current,
-                            components = ChatMarkdownComponents,
-                        )
-                    }
+                    // Markdown renders progressively while streaming — the
+                    // renderer re-parses only the unstable tail per chunk
+                    // (see AssistantMarkdown). The same path keeps rendering
+                    // after settle, so the last streamed frame *is* the final
+                    // frame; nothing swaps, nothing flashes.
+                    AssistantMarkdown(item.text.s)
                 }
                 item.text.more?.let { ExpandRow(it, expanded, onExpand) }
 
@@ -253,6 +247,53 @@ private fun AssistantBlock(
             )
         }
     }
+}
+
+/**
+ * Progressive markdown for an assistant reply, using the renderer's native
+ * streaming support: `StreamingMarkdownState` is append-only and re-parses
+ * only the unstable tail of the document per chunk (stable prefix nodes are
+ * kept), so a long answer costs one tail parse per chunk instead of a full
+ * re-parse. Chunks here are just the growing diff of `text` — the app receives
+ * a settled string over SSE, so [AssistantMarkdown] turns length changes into
+ * `append`s; a change that is *not* an append (branch navigation replacing the
+ * text mid-stream) bumps the epoch to restart with a fresh state and replay.
+ *
+ * The streaming state also stays mounted after the message settles. The plain
+ * `Markdown(content)` overload parses asynchronously and shows an empty box
+ * until done, so switching to it at settle time flashed — one blank frame
+ * between the last streamed frame and the re-rendered document. Keeping one
+ * render path means settling changes nothing visually: appending stops, the
+ * AST stays as the last chunk left it.
+ */
+@Composable
+private fun AssistantMarkdown(text: String) {
+    var epoch by remember { mutableIntStateOf(0) }
+    var appended by remember { mutableStateOf("") }
+    val state = key(epoch) { rememberStreamingMarkdownState() }
+    val latestText by rememberUpdatedState(text)
+
+    LaunchedEffect(state) {
+        snapshotFlow { latestText }.collect { t ->
+            when {
+                t.startsWith(appended) -> {
+                    if (t.length > appended.length) state.append(t.removePrefix(appended))
+                    appended = t
+                }
+                // Replaced or shrunk mid-stream: recreate the state empty and
+                // let the next pass replay the new text in full.
+                else -> {
+                    epoch++
+                    appended = ""
+                }
+            }
+        }
+    }
+    Markdown(
+        streamingMarkdownState = state,
+        typography = LocalMarkdownTypography.current,
+        components = ChatMarkdownComponents,
+    )
 }
 
 /**
