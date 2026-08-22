@@ -70,6 +70,7 @@ import com.piremote.net.ApiException
 import com.piremote.net.SessionTreeDto
 import com.piremote.net.TreeNodeDto
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import org.jetbrains.compose.resources.stringResource
 import piremote.composeapp.generated.resources.*
 
@@ -631,6 +632,9 @@ private fun MoveDialog(
     )
 }
 
+/** Jumps longer than this skip the scroll animation (see [jumpTo]). */
+private const val ANIMATE_SCROLL_MAX_DISTANCE = 30
+
 @Composable
 private fun FloatingBranchNavigator(
     rows: List<TreeRow>,
@@ -639,6 +643,21 @@ private fun FloatingBranchNavigator(
 ) {
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
+
+    // animateScrollToItem composes every row it passes, so animating across a
+    // huge tree stalls the UI for the whole flight. Short hops stay animated;
+    // long jumps land instantly.
+    fun jumpTo(target: Int) {
+        if (target !in rows.indices) return
+        val distance = abs(target - listState.firstVisibleItemIndex)
+        scope.launch {
+            if (distance <= ANIMATE_SCROLL_MAX_DISTANCE) {
+                listState.animateScrollToItem(target)
+            } else {
+                listState.scrollToItem(target)
+            }
+        }
+    }
 
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -659,7 +678,7 @@ private fun FloatingBranchNavigator(
                     val target = (current - 1 downTo 0).firstOrNull {
                         rows[it].isFoldable || rows[it].showConnector
                     } ?: 0
-                    scope.launch { listState.animateScrollToItem(target) }
+                    jumpTo(target)
                 },
                 modifier = Modifier.size(38.dp),
             ) {
@@ -677,9 +696,7 @@ private fun FloatingBranchNavigator(
                         .takeIf { it >= 0 }
                         ?: rows.indexOfLast { it.isOnActivePath }.takeIf { it >= 0 }
                         ?: (rows.size - 1)
-                    if (target in rows.indices) {
-                        scope.launch { listState.animateScrollToItem(target) }
-                    }
+                    jumpTo(target)
                 },
                 modifier = Modifier.size(38.dp),
             ) {
@@ -697,7 +714,7 @@ private fun FloatingBranchNavigator(
                     val target = (current + 1 until rows.size).firstOrNull {
                         rows[it].isFoldable || rows[it].showConnector
                     } ?: (rows.size - 1)
-                    scope.launch { listState.animateScrollToItem(target) }
+                    jumpTo(target)
                 },
                 modifier = Modifier.size(38.dp),
             ) {
