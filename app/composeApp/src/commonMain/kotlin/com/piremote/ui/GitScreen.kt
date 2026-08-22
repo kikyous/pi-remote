@@ -333,13 +333,9 @@ private fun GitChangeRow(change: GitChangeDto, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StatusBadge(change.status)
-        Text(
+        FrontEllipsisText(
             change.path,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
         )
         if (change.added > 0 || change.deleted > 0) {
             Text(
@@ -395,6 +391,41 @@ private fun GitCommitRow(commit: GitCommitDto, onClick: () -> Unit) {
         }
     }
     HorizontalDivider()
+}
+
+/**
+ * Path text that collapses itself from the FRONT only, GitHub-style.
+ *
+ * Starts as the full path; after layout, if it overflows $maxLines lines,
+ * leading directories are dropped one by one behind a "…" prefix until it
+ * fits. This adapts to any screen width and keeps the file name plus as much
+ * trailing context as possible — unlike a fixed char budget, which either
+ * wastes space or leaves room for Text's own END ellipsis ("…a/b…").
+ */
+@Composable
+private fun FrontEllipsisText(
+    path: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 2,
+    style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
+) {
+    var display by remember(path) { mutableStateOf(path) }
+    Text(
+        display,
+        style = style,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis, // only hit when a lone file name is too long
+        onTextLayout = { result ->
+            if (!result.hasVisualOverflow) return@Text
+            val body = display.removePrefix("…")
+            val segments = body.split('/')
+            if (segments.size > 1) {
+                display = "…" + segments.drop(1).joinToString("/")
+            }
+        },
+    )
 }
 
 /** Small coloured status letter, GitHub-style. */
@@ -540,7 +571,13 @@ private fun DiffScaffold(
                 },
                 title = {
                     Column {
-                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                        // maxLines=1 keeps the top bar single-line; front-collapse
+                        // still guarantees the file name stays visible.
+                        FrontEllipsisText(
+                            title,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         if (subtitle != null) {
                             Text(
                                 subtitle,
